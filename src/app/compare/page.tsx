@@ -1,0 +1,284 @@
+/**
+ * Side-by-side comparison view with chart visualizations.
+ *
+ * URL: /wc-explorer/compare/?years=1986,2022,2018
+ *
+ * The picker is a tiny client island; the page itself is server-rendered
+ * so the charts ship pre-data. Multi-line charts overlay every selected
+ * tournament so you can see "this is the highest scoring rate" at a glance
+ * across multiple years.
+ */
+
+import Link from 'next/link';
+import type { Metadata } from 'next';
+import { compareTournaments, listTournaments } from '@/lib/wc-api';
+import {
+  BarSeries, MultiLine, Donut, SERIES_COLORS, PALETTE,
+} from '@/components/charts/Charts';
+import { CompareYearsPicker } from './CompareYearsPicker';
+
+export const dynamic = 'force-dynamic';
+
+export const metadata: Metadata = {
+  title: 'Compare World Cups side-by-side',
+  description: 'Pick any 2+ FIFA World Cup tournaments and see them charted side-by-side: total goals, goals per match, attendance, top scorers, champions.',
+};
+
+export default async function ComparePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ years?: string }>;
+}) {
+  const sp = await searchParams;
+  const all = await listTournaments();
+  const playedYears = all.filter((t) => t.champion).map((t) => t.year);
+
+  const requested = sp.years
+    ? sp.years.split(',').map((y) => Number(y.trim())).filter((y) => playedYears.includes(y))
+    : [];
+
+  // Default: 3 most-recent played
+  const years = requested.length >= 2 ? requested : playedYears.slice(-3);
+
+  const rows = await compareTournaments(years);
+  // Server may return rows in any order; pin to the user's request order
+  // for chart stability.
+  rows.sort((a, b) => years.indexOf(a.year) - years.indexOf(b.year));
+
+  // Chart data
+  const goalsByYear = rows.map((r) => ({
+    label: String(r.year), value: r.totalGoals ?? 0,
+  }));
+  const goalsPerMatch = rows.map((r) => ({
+    label: String(r.year), value: Number((r.goalsPerMatch ?? 0).toFixed(2)),
+  }));
+  const attendanceByYear = rows.map((r) => ({
+    label: String(r.year), value: r.totalAttendance ?? 0,
+  }));
+  const teamsByYear = rows.map((r) => ({
+    label: String(r.year), value: r.teamsCount,
+  }));
+
+  // Multi-series: combined goals + goals/match (different scales — but
+  // useful as overlay if normalized; we'll show separately for clarity).
+  const topScorerBars = rows.map((r) => ({
+    label: r.topScorer ? `${r.topScorer.player.split(' ').slice(-1)[0]} (${r.year})` : String(r.year),
+    value: r.topScorer?.goals ?? 0,
+  }));
+
+  // Side-by-side podiums
+  const podiums = rows.map((r) => ({
+    year: r.year,
+    host: r.host.join(' + '),
+    champion: r.champion,
+    runnerUp: r.runnerUp,
+    thirdPlace: r.thirdPlace,
+    bestPlayer: r.bestPlayer,
+  }));
+
+  return (
+    <>
+      {/* Hero */}
+      <section className="border-b border-ink-800 bg-grid">
+        <div className="max-w-7xl mx-auto px-6 py-10 sm:py-12">
+          <div className="text-xs mb-4">
+            <Link href="/" className="text-brand-400 hover:underline">
+              ← Overview
+            </Link>
+          </div>
+          <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
+            Compare tournaments
+          </h1>
+          <p className="text-ink-300 text-sm mt-2 max-w-2xl">
+            Pick any 2 or more World Cups. URL is shareable
+            (<span className="font-mono text-brand-400">?years=1986,2022</span>).
+            Powered by <span className="font-mono text-brand-400">GET /compare?years=…</span>
+          </p>
+
+          <CompareYearsPicker allYears={playedYears} active={years} />
+        </div>
+      </section>
+
+      {rows.length < 2 ? (
+        <div className="max-w-7xl mx-auto px-6 py-20 text-center">
+          <p className="text-ink-300">Pick at least 2 tournaments to compare.</p>
+        </div>
+      ) : (
+        <>
+          {/* Podium row — quick visual comparison of who won what */}
+          <section className="max-w-7xl mx-auto px-6 py-8">
+            <h2 className="text-sm uppercase tracking-widest text-ink-300 mb-4">
+              Champions, runners-up, third places
+            </h2>
+            <div
+              className="grid gap-3"
+              style={{ gridTemplateColumns: `repeat(${rows.length}, minmax(0, 1fr))` }}
+            >
+              {podiums.map((p, i) => (
+                <div
+                  key={p.year}
+                  className="bg-ink-900 border border-ink-800 rounded-2xl p-5 lift"
+                  style={{ borderTopColor: PALETTE[i % PALETTE.length], borderTopWidth: 3 }}
+                >
+                  <div className="flex items-baseline justify-between">
+                    <Link
+                      href={`/${p.year}/`}
+                      className="text-2xl font-black text-white hover:text-brand-400"
+                    >
+                      {p.year}
+                    </Link>
+                    <span className="text-[10px] text-ink-300">{p.host}</span>
+                  </div>
+                  <div className="mt-4 space-y-2 text-sm">
+                    <Slot place="🏆 Champion"  team={p.champion}  highlight />
+                    <Slot place="🥈 Runner-up" team={p.runnerUp} />
+                    <Slot place="🥉 Third"     team={p.thirdPlace} />
+                  </div>
+                  {p.bestPlayer && (
+                    <div className="mt-4 pt-3 border-t border-ink-800 text-[11px]">
+                      <span className="text-ink-300">Best player: </span>
+                      <span className="text-white font-semibold">{p.bestPlayer}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Charts row 1 */}
+          <section className="max-w-7xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <ChartCard
+              title="Total goals"
+              subtitle="Goals scored across the tournament"
+            >
+              <BarSeries data={goalsByYear} color={SERIES_COLORS.brand} valueLabel="goals" height={260} />
+            </ChartCard>
+
+            <ChartCard
+              title="Goals per match"
+              subtitle="Scoring rate"
+            >
+              <BarSeries data={goalsPerMatch} color={SERIES_COLORS.gold} valueLabel="goals/match" height={260} />
+            </ChartCard>
+          </section>
+
+          {/* Charts row 2 */}
+          <section className="max-w-7xl mx-auto px-6 py-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <ChartCard
+              title="Total attendance"
+              subtitle="Fans through the gates"
+            >
+              <BarSeries data={attendanceByYear} color={SERIES_COLORS.cyan} valueLabel="attendance" height={260} />
+            </ChartCard>
+
+            <ChartCard
+              title="Tournament size"
+              subtitle="Qualifying teams"
+            >
+              <BarSeries data={teamsByYear} color={SERIES_COLORS.green} valueLabel="teams" height={260} />
+            </ChartCard>
+          </section>
+
+          {/* Top scorer comparison */}
+          <section className="max-w-7xl mx-auto px-6 pb-6">
+            <ChartCard
+              title="Top scorer per tournament"
+              subtitle="Goals scored by the Golden-Boot winner"
+            >
+              <BarSeries data={topScorerBars} color={SERIES_COLORS.pink} valueLabel="goals" height={240} />
+            </ChartCard>
+          </section>
+
+          {/* Detail table */}
+          <section className="max-w-7xl mx-auto px-6 pb-12">
+            <div className="bg-ink-900 border border-ink-800 rounded-2xl p-5 overflow-x-auto">
+              <h2 className="text-sm font-bold text-white mb-4">Full breakdown</h2>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-ink-800 text-[10px] uppercase tracking-widest text-ink-300">
+                    <th className="text-left py-2 px-2">Metric</th>
+                    {rows.map((r) => (
+                      <th key={r.year} className="text-left py-2 px-2 text-white text-sm font-bold">
+                        <Link href={`/${r.year}/`} className="hover:text-brand-400">{r.year}</Link>
+                        <div className="text-[10px] text-ink-300 font-normal">{r.host.join(' + ')}</div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-ink-800">
+                  <Row label="Edition"           rows={rows} get={(r) => `#${r.edition}`} />
+                  <Row label="Champion"          rows={rows} get={(r) => r.champion ?? '—'} highlight />
+                  <Row label="Runner-up"         rows={rows} get={(r) => r.runnerUp ?? '—'} />
+                  <Row label="Third place"       rows={rows} get={(r) => r.thirdPlace ?? '—'} />
+                  <Row label="Teams"             rows={rows} get={(r) => String(r.teamsCount)} numeric />
+                  <Row label="Matches"           rows={rows} get={(r) => String(r.matchesCount)} numeric />
+                  <Row label="Total goals"       rows={rows} get={(r) => r.totalGoals != null ? String(r.totalGoals) : '—'} numeric />
+                  <Row label="Goals / match"     rows={rows} get={(r) => r.goalsPerMatch != null ? r.goalsPerMatch.toFixed(2) : '—'} numeric />
+                  <Row label="Top scorer"        rows={rows} get={(r) => r.topScorer ? `${r.topScorer.player} (${r.topScorer.goals})` : '—'} />
+                  <Row label="Best player"       rows={rows} get={(r) => r.bestPlayer ?? '—'} />
+                  <Row label="Total attendance"  rows={rows} get={(r) => r.totalAttendance != null ? r.totalAttendance.toLocaleString() : '—'} numeric />
+                  <Row label="Avg attendance"    rows={rows} get={(r) => r.avgAttendance != null ? r.avgAttendance.toLocaleString() : '—'} numeric />
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
+    </>
+  );
+}
+
+function Slot({ place, team, highlight }: { place: string; team: string | null; highlight?: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-2">
+      <span className="text-[11px] text-ink-300">{place}</span>
+      <span className={`text-sm ${highlight ? 'text-accent-gold font-bold' : 'text-white font-medium'} truncate text-right`}>
+        {team ?? '—'}
+      </span>
+    </div>
+  );
+}
+
+function ChartCard({ title, subtitle, children }: {
+  title: string; subtitle: string; children: React.ReactNode;
+}) {
+  return (
+    <div className="bg-ink-900 border border-ink-800 rounded-2xl p-5">
+      <div className="mb-4">
+        <h3 className="text-sm font-bold text-white">{title}</h3>
+        <div className="text-[11px] text-ink-300">{subtitle}</div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+import type { ApiCompareRow } from '@/lib/wc-api';
+
+function Row({
+  label, rows, get, highlight, numeric,
+}: {
+  label: string;
+  rows: ApiCompareRow[];
+  get: (r: ApiCompareRow) => string;
+  highlight?: boolean;
+  numeric?: boolean;
+}) {
+  return (
+    <tr className="hover:bg-ink-800/30">
+      <td className="py-2 px-2 text-[11px] uppercase tracking-wider text-ink-300 whitespace-nowrap">
+        {label}
+      </td>
+      {rows.map((r) => (
+        <td
+          key={r.year}
+          className={`py-2 px-2 text-sm ${
+            highlight ? 'text-accent-gold font-bold' : 'text-white'
+          } ${numeric ? 'font-mono tabular-nums' : ''}`}
+        >
+          {get(r)}
+        </td>
+      ))}
+    </tr>
+  );
+}

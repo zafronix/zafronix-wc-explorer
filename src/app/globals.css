@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+
+body {
+  background: theme('colors.ink.950');
+  color: theme('colors.ink.100');
+  font-family: theme('fontFamily.sans');
+  -webkit-font-smoothing: antialiased;
+}
+
+code, pre, .font-mono { font-family: theme('fontFamily.mono'); }
+
+/* Subtle grid background for the hero on the landing page */
+.bg-grid {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 36px 36px;
+}
+
+/* Glow accents around stat numbers */
+.glow-brand { text-shadow: 0 0 32px rgba(163, 132, 255, 0.35); }
+.glow-gold  { text-shadow: 0 0 28px rgba(250, 204, 21, 0.40); }
+
+/* Card hover lift */
+.lift { transition: transform 200ms ease, border-color 200ms ease; }
+.lift:hover { transform: translateY(-2px); border-color: rgba(163, 132, 255, 0.6); }
+
+/* Recharts: ensure dark-friendly tooltip + grid */
+.recharts-cartesian-grid line { stroke: rgba(255,255,255,0.06); }
+.recharts-cartesian-axis-tick-value { fill: #a8a4c0 !important; font-size: 11px; }
+.recharts-tooltip-wrapper { outline: none !important; }

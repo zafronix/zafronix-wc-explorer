@@ -1,0 +1,34 @@
+[Unit]
+# zafronix-wc-explorer — public sample dashboard at api.zafronix.com/wc-explorer.
+# Co-located with zafronix-wc-api + zafronix-admin on the studio VPS.
+Description=Zafronix WC Explorer (sample dashboard)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/zafronix-wc-explorer
+
+# Non-secret runtime config.
+Environment=NODE_ENV=production
+Environment=PORT=3400
+
+# WC_API_KEY (read tier) lives in the sysconfig file alongside any
+# future explorer-specific config. Mode 600.
+EnvironmentFile=/etc/sysconfig/zafronix-wc-explorer
+
+ExecStart=/usr/bin/node /var/www/zafronix-wc-explorer/node_modules/next/dist/bin/next start
+
+Restart=always
+RestartSec=5
+
+User=root
+
+ProtectSystem=full
+NoNewPrivileges=true
+PrivateTmp=true
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
