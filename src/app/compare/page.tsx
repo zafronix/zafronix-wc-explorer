@@ -38,12 +38,13 @@ export default async function ComparePage({
     ? sp.years.split(',').map((y) => Number(y.trim())).filter((y) => playedYears.includes(y))
     : [];
 
-  // Default: 3 most-recent played
-  // Min 1 — operator can render a single tournament in this layout
-  // when they want the comparative table treatment for one year.
-  const years = requested.length >= 1 ? requested : playedYears.slice(-3);
+  // No default selection — operator picks years explicitly via the
+  // chip strip, matching the toggle UX on Stadiums / Players / Teams.
+  // Empty state renders a "pick 2+" prompt instead of inventing a
+  // selection that doesn't reflect what the user asked for.
+  const years = requested;
 
-  const rows = await compareTournaments(years);
+  const rows = years.length > 0 ? await compareTournaments(years) : [];
   // Server may return rows in any order; pin to the user's request order
   // for chart stability.
   rows.sort((a, b) => years.indexOf(a.year) - years.indexOf(b.year));
@@ -53,7 +54,9 @@ export default async function ComparePage({
   // breakdown table can render with a flag. /compare gives us names
   // only; we resolve teams by walking each year's full squad.
   // Cached per-year at the API, so this is a warm round-trip.
-  const fulls = await Promise.all(years.map((y) => getTournament(y).catch(() => null)));
+  const fulls = years.length > 0
+    ? await Promise.all(years.map((y) => getTournament(y).catch(() => null)))
+    : [];
   const playerTeam = new Map<string, string>();
   for (const t of fulls) {
     if (!t || !t.teams) continue;
@@ -120,8 +123,11 @@ export default async function ComparePage({
       </section>
 
       {rows.length < 1 ? (
-        <div className="max-w-7xl mx-auto px-6 py-20 text-center">
-          <p className="text-ink-300">Pick at least one tournament.</p>
+        <div className="max-w-7xl mx-auto px-6 py-24 text-center">
+          <p className="text-ink-200 text-lg">Pick 2 or more tournaments above to compare.</p>
+          <p className="text-ink-500 text-xs mt-2">
+            Or pick a single year for a single-tournament summary in this layout.
+          </p>
         </div>
       ) : (
         <>
