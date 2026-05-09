@@ -17,6 +17,7 @@ import {
 import {
   AreaSeries, BarSeries, LineSeries, Donut, SERIES_COLORS,
 } from '@/components/charts/Charts';
+import { Flag, HostFlags } from '@/components/Flag';
 import type { Metadata } from 'next';
 
 export const dynamic = 'force-dynamic';
@@ -50,18 +51,19 @@ export default async function LandingPage() {
   ).flat();
   compareRows.sort((a, b) => a.year - b.year);
 
-  // Derived series for charts
+  // Derived series for charts. Every point carries the host(s) so
+  // tooltips can render <flag> Country in addition to year + value.
   const goalsByYear = compareRows.map((r) => ({
-    label: String(r.year), value: r.totalGoals ?? 0,
+    label: String(r.year), value: r.totalGoals ?? 0, host: r.host,
   }));
   const goalsPerMatch = compareRows.map((r) => ({
-    label: String(r.year), value: Number((r.goalsPerMatch ?? 0).toFixed(2)),
+    label: String(r.year), value: Number((r.goalsPerMatch ?? 0).toFixed(2)), host: r.host,
   }));
   const attendanceByYear = compareRows.map((r) => ({
-    label: String(r.year), value: r.totalAttendance ?? 0,
+    label: String(r.year), value: r.totalAttendance ?? 0, host: r.host,
   }));
   const teamsByYear = compareRows.map((r) => ({
-    label: String(r.year), value: r.teamsCount,
+    label: String(r.year), value: r.teamsCount, host: r.host,
   }));
 
   // Champions byCountry → donut
@@ -140,11 +142,13 @@ export default async function LandingPage() {
             <BigNumber
               label="Total goals"
               value={totalGoals.toLocaleString()}
+              hint={playedCount > 0 ? `${Math.round(totalGoals / playedCount).toLocaleString()} avg / tournament` : undefined}
               accent="gold"
             />
             <BigNumber
               label="Matches"
               value={totalMatches.toLocaleString()}
+              hint={playedCount > 0 ? `${Math.round(totalMatches / playedCount).toLocaleString()} avg / tournament` : undefined}
             />
             <BigNumber
               label="Total attendance"
@@ -208,23 +212,13 @@ export default async function LandingPage() {
           subtitle="Who's lifted the trophy"
           source="GET /aggregates/champions"
         >
+          {/* Donut renders flags + country + count directly on each
+              slice (Phase A) so the side legend is no longer needed. */}
           <Donut
             data={championsDonut}
             centerLabel={`${championsDonut.length}`}
-            height={300}
+            height={340}
           />
-          <div className="mt-3 grid grid-cols-2 gap-1 text-[11px]">
-            {championsDonut.map((c, i) => (
-              <div key={c.label} className="flex items-center gap-2">
-                <span
-                  className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
-                  style={{ background: ['#a384ff','#facc15','#22c55e','#60a5fa','#f472b6','#22d3ee','#fb923c','#ef4444','#c2adff'][i % 9] }}
-                />
-                <span className="text-ink-300 truncate">{c.label}</span>
-                <span className="text-ink-500 ml-auto">×{c.value}</span>
-              </div>
-            ))}
-          </div>
         </ChartCard>
       </section>
 
@@ -244,12 +238,17 @@ export default async function LandingPage() {
                 className="block bg-ink-900 border border-ink-800 hover:border-brand-500/60 rounded-xl px-3 py-2.5 lift"
               >
                 <div className="text-base font-bold text-white">{t.year}</div>
-                <div className="text-[10px] text-ink-300 truncate">
-                  {t.host.join(' + ')}
+                <div className="flex items-center gap-1 mt-0.5 text-[10px] text-ink-300 truncate">
+                  {/* Co-hosts (e.g. 2002 KOR/JPN, 2026 USA/CAN/MEX)
+                      get all flags side-by-side. */}
+                  <HostFlags hosts={t.host} flagsOnly className="flex-shrink-0" />
+                  <span className="truncate">{t.host.join(' / ')}</span>
                 </div>
                 {t.champion ? (
-                  <div className="text-[10px] text-accent-gold mt-1 truncate">
-                    🏆 {t.champion}
+                  <div className="flex items-center gap-1 mt-1 text-[10px] text-accent-gold truncate">
+                    <span aria-hidden>🏆</span>
+                    <Flag country={t.champion} size={20} />
+                    <span className="truncate">{t.champion}</span>
                   </div>
                 ) : (
                   <div className="text-[10px] text-ink-500 mt-1">upcoming</div>
@@ -266,7 +265,8 @@ export default async function LandingPage() {
           title="Highest-scoring tournaments"
           rows={topScoring.map((r) => ({
             year: r.year,
-            host: r.host.join(' + '),
+            hosts: r.host,
+            champion: r.champion,
             value: `${r.totalGoals} goals`,
             sub: `${r.goalsPerMatch?.toFixed(2) ?? '—'}/match`,
           }))}
@@ -275,7 +275,8 @@ export default async function LandingPage() {
           title="Best-attended tournaments"
           rows={topAttended.map((r) => ({
             year: r.year,
-            host: r.host.join(' + '),
+            hosts: r.host,
+            champion: r.champion,
             value: `${r.totalAttendance?.toLocaleString() ?? '—'}`,
             sub: r.avgAttendance != null
               ? `${r.avgAttendance.toLocaleString()}/match`
@@ -361,7 +362,13 @@ function Leaderboard({
   title, rows,
 }: {
   title: string;
-  rows: Array<{ year: number; host: string; value: string; sub: string }>;
+  rows: Array<{
+    year: number;
+    hosts: string[];
+    champion: string | null;
+    value: string;
+    sub: string;
+  }>;
 }) {
   return (
     <div className="bg-ink-900 border border-ink-800 rounded-2xl p-5">
@@ -377,9 +384,19 @@ function Leaderboard({
                 {i + 1}.
               </span>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-white">
-                  {r.year} <span className="text-ink-300 font-normal">· {r.host}</span>
+                <div className="text-sm font-semibold text-white flex items-center gap-1.5 flex-wrap">
+                  <span>{r.year}</span>
+                  <span className="text-ink-500">·</span>
+                  <HostFlags hosts={r.hosts} flagsOnly />
+                  <span className="text-ink-300 font-normal truncate">{r.hosts.join(' / ')}</span>
                 </div>
+                {r.champion && (
+                  <div className="flex items-center gap-1 text-[11px] text-accent-gold/80 mt-0.5">
+                    <span aria-hidden>🏆</span>
+                    <Flag country={r.champion} />
+                    <span>{r.champion}</span>
+                  </div>
+                )}
               </div>
               <div className="text-right">
                 <div className="text-sm font-bold text-accent-gold font-mono tabular-nums">

@@ -13,8 +13,9 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import { compareTournaments, listTournaments } from '@/lib/wc-api';
 import {
-  BarSeries, MultiLine, Donut, SERIES_COLORS, PALETTE,
+  BarSeries, SERIES_COLORS, PALETTE,
 } from '@/components/charts/Charts';
+import { Flag, HostFlags } from '@/components/Flag';
 import { CompareYearsPicker } from './CompareYearsPicker';
 
 export const dynamic = 'force-dynamic';
@@ -45,31 +46,31 @@ export default async function ComparePage({
   // for chart stability.
   rows.sort((a, b) => years.indexOf(a.year) - years.indexOf(b.year));
 
-  // Chart data
+  // Chart data — every point carries host(s) so tooltips render
+  // <flag> Country alongside the year + value.
   const goalsByYear = rows.map((r) => ({
-    label: String(r.year), value: r.totalGoals ?? 0,
+    label: String(r.year), value: r.totalGoals ?? 0, host: r.host,
   }));
   const goalsPerMatch = rows.map((r) => ({
-    label: String(r.year), value: Number((r.goalsPerMatch ?? 0).toFixed(2)),
+    label: String(r.year), value: Number((r.goalsPerMatch ?? 0).toFixed(2)), host: r.host,
   }));
   const attendanceByYear = rows.map((r) => ({
-    label: String(r.year), value: r.totalAttendance ?? 0,
+    label: String(r.year), value: r.totalAttendance ?? 0, host: r.host,
   }));
   const teamsByYear = rows.map((r) => ({
-    label: String(r.year), value: r.teamsCount,
+    label: String(r.year), value: r.teamsCount, host: r.host,
   }));
 
-  // Multi-series: combined goals + goals/match (different scales — but
-  // useful as overlay if normalized; we'll show separately for clarity).
   const topScorerBars = rows.map((r) => ({
     label: r.topScorer ? `${r.topScorer.player.split(' ').slice(-1)[0]} (${r.year})` : String(r.year),
     value: r.topScorer?.goals ?? 0,
+    host: r.host,
   }));
 
   // Side-by-side podiums
   const podiums = rows.map((r) => ({
     year: r.year,
-    host: r.host.join(' + '),
+    hosts: r.host,
     champion: r.champion,
     runnerUp: r.runnerUp,
     thirdPlace: r.thirdPlace,
@@ -120,15 +121,16 @@ export default async function ComparePage({
                   className="bg-ink-900 border border-ink-800 rounded-2xl p-5 lift"
                   style={{ borderTopColor: PALETTE[i % PALETTE.length], borderTopWidth: 3 }}
                 >
-                  <div className="flex items-baseline justify-between">
+                  <div className="flex items-baseline justify-between gap-2">
                     <Link
                       href={`/${p.year}/`}
                       className="text-2xl font-black text-white hover:text-brand-400"
                     >
                       {p.year}
                     </Link>
-                    <span className="text-[10px] text-ink-300">{p.host}</span>
+                    <HostFlags hosts={p.hosts} flagsOnly className="text-[10px]" />
                   </div>
+                  <div className="text-[10px] text-ink-300 mt-0.5 truncate">{p.hosts.join(' / ')}</div>
                   <div className="mt-4 space-y-2 text-sm">
                     <Slot place="🏆 Champion"  team={p.champion}  highlight />
                     <Slot place="🥈 Runner-up" team={p.runnerUp} />
@@ -200,16 +202,19 @@ export default async function ComparePage({
                     {rows.map((r) => (
                       <th key={r.year} className="text-left py-2 px-2 text-white text-sm font-bold">
                         <Link href={`/${r.year}/`} className="hover:text-brand-400">{r.year}</Link>
-                        <div className="text-[10px] text-ink-300 font-normal">{r.host.join(' + ')}</div>
+                        <div className="text-[10px] text-ink-300 font-normal flex items-center gap-1 mt-0.5">
+                          <HostFlags hosts={r.host} flagsOnly />
+                          <span className="truncate">{r.host.join(' / ')}</span>
+                        </div>
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-ink-800">
                   <Row label="Edition"           rows={rows} get={(r) => `#${r.edition}`} />
-                  <Row label="Champion"          rows={rows} get={(r) => r.champion ?? '—'} highlight />
-                  <Row label="Runner-up"         rows={rows} get={(r) => r.runnerUp ?? '—'} />
-                  <Row label="Third place"       rows={rows} get={(r) => r.thirdPlace ?? '—'} />
+                  <Row label="Champion"          rows={rows} getNode={(r) => <CountryCell name={r.champion} />} highlight />
+                  <Row label="Runner-up"         rows={rows} getNode={(r) => <CountryCell name={r.runnerUp} />} />
+                  <Row label="Third place"       rows={rows} getNode={(r) => <CountryCell name={r.thirdPlace} />} />
                   <Row label="Teams"             rows={rows} get={(r) => String(r.teamsCount)} numeric />
                   <Row label="Matches"           rows={rows} get={(r) => String(r.matchesCount)} numeric />
                   <Row label="Total goals"       rows={rows} get={(r) => r.totalGoals != null ? String(r.totalGoals) : '—'} numeric />
@@ -230,10 +235,11 @@ export default async function ComparePage({
 
 function Slot({ place, team, highlight }: { place: string; team: string | null; highlight?: boolean }) {
   return (
-    <div className="flex items-baseline justify-between gap-2">
+    <div className="flex items-center justify-between gap-2">
       <span className="text-[11px] text-ink-300">{place}</span>
-      <span className={`text-sm ${highlight ? 'text-accent-gold font-bold' : 'text-white font-medium'} truncate text-right`}>
-        {team ?? '—'}
+      <span className={`text-sm ${highlight ? 'text-accent-gold font-bold' : 'text-white font-medium'} truncate text-right inline-flex items-center gap-1.5`}>
+        {team ? <Flag country={team} /> : null}
+        <span>{team ?? '—'}</span>
       </span>
     </div>
   );
@@ -256,11 +262,17 @@ function ChartCard({ title, subtitle, children }: {
 import type { ApiCompareRow } from '@/lib/wc-api';
 
 function Row({
-  label, rows, get, highlight, numeric,
+  label, rows, get, getNode, highlight, numeric,
 }: {
   label: string;
   rows: ApiCompareRow[];
-  get: (r: ApiCompareRow) => string;
+  /** Renders a string value into the cell. Use for numbers, plain
+   *  text, or anything that doesn't need flags. Mutually exclusive
+   *  with getNode. */
+  get?: (r: ApiCompareRow) => string;
+  /** Renders a React node into the cell. Use for country cells
+   *  (champion / runner-up / third place) where we want a flag. */
+  getNode?: (r: ApiCompareRow) => React.ReactNode;
   highlight?: boolean;
   numeric?: boolean;
 }) {
@@ -276,9 +288,23 @@ function Row({
             highlight ? 'text-accent-gold font-bold' : 'text-white'
           } ${numeric ? 'font-mono tabular-nums' : ''}`}
         >
-          {get(r)}
+          {getNode ? getNode(r) : (get ? get(r) : '—')}
         </td>
       ))}
     </tr>
+  );
+}
+
+/**
+ * Country cell with inline flag — used for champion / runner-up / third-
+ * place rows of the comparison table. Falls back to em-dash when null.
+ */
+function CountryCell({ name }: { name: string | null }) {
+  if (!name) return <span className="text-ink-500">—</span>;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <Flag country={name} />
+      <span>{name}</span>
+    </span>
   );
 }
