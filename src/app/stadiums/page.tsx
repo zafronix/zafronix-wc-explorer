@@ -81,13 +81,21 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
   );
 
   // Total match count per stadium (across the active window) +
-  // per-year breakdown for the leaderboard's tournament list.
+  // per-year breakdown for the leaderboard's tournament list +
+  // total goals per stadium (for altitude-effect analysis below).
   const matchCountByStadium  = new Map<string, number>();
+  const goalCountByStadium   = new Map<string, number>();
   const matchByStadiumYear   = new Map<string, Map<number, number>>();
   for (const [year, list] of matchListsByYear) {
     for (const m of list) {
       if (!m.stadiumId) continue;
       matchCountByStadium.set(m.stadiumId, (matchCountByStadium.get(m.stadiumId) ?? 0) + 1);
+      const goals = (m.homeScore ?? 0) + (m.awayScore ?? 0);
+      // Skip null-score future matches when computing the total —
+      // 2026 fixtures might be on the schedule with score=null.
+      if (m.homeScore != null && m.awayScore != null) {
+        goalCountByStadium.set(m.stadiumId, (goalCountByStadium.get(m.stadiumId) ?? 0) + goals);
+      }
       let perYear = matchByStadiumYear.get(m.stadiumId);
       if (!perYear) {
         perYear = new Map();
@@ -96,6 +104,39 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
       perYear.set(year, (perYear.get(year) ?? 0) + 1);
     }
   }
+
+  // Altitude-effect bucketing — average goals/match per altitude band.
+  // Only stadiums with both elevation and at least one finalized match
+  // contribute. Bands picked to roughly mirror the FIFA "altitude
+  // medical guidance" thresholds (sea level / mid / high / very-high).
+  interface AltBucket { label: string; min: number; max: number; matches: number; goals: number; venues: number; }
+  const altBuckets: AltBucket[] = [
+    { label: 'Sea level (<200m)',  min: 0,    max: 200,  matches: 0, goals: 0, venues: 0 },
+    { label: 'Low (200-800m)',     min: 200,  max: 800,  matches: 0, goals: 0, venues: 0 },
+    { label: 'Mid (800-1500m)',    min: 800,  max: 1500, matches: 0, goals: 0, venues: 0 },
+    { label: 'High (1500-2200m)',  min: 1500, max: 2200, matches: 0, goals: 0, venues: 0 },
+    { label: 'Very high (≥2200m)', min: 2200, max: Infinity, matches: 0, goals: 0, venues: 0 },
+  ];
+  for (const s of stadiums) {
+    if (typeof s.elevationM !== 'number') continue;
+    const matches = matchCountByStadium.get(s.id) ?? 0;
+    const goals   = goalCountByStadium.get(s.id) ?? 0;
+    if (matches === 0) continue;
+    const bucket = altBuckets.find((b) => (s.elevationM as number) >= b.min && (s.elevationM as number) < b.max);
+    if (!bucket) continue;
+    bucket.matches += matches;
+    bucket.goals   += goals;
+    bucket.venues  += 1;
+  }
+  const altitudeChart = altBuckets
+    .filter((b) => b.matches > 0)
+    .map((b) => ({
+      label: b.label,
+      value: Math.round((b.goals / b.matches) * 100) / 100,
+      // Carry the totals through so the tooltip can show the underlying
+      // numbers, not just the ratio.
+      host: undefined,
+    }));
 
   // ─── Aggregates ──────────────────────────────────────────────────
   const totalCapacity = stadiums.reduce((s, x) => s + (x.capacity ?? 0), 0);
@@ -346,6 +387,35 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
           <Donut data={countryDonut} centerLabel={String(stadiums.length)} height={300} />
         </ChartCard>
       </section>
+
+      {/* Altitude-effect chart — does playing higher correlate with
+          more goals? Bands roughly mirror FIFA's altitude medical
+          guidance thresholds. */}
+      {altitudeChart.length > 0 && (
+        <section className="max-w-7xl mx-auto px-6 pb-2">
+          <ChartCard
+            title="Goals per match by stadium altitude"
+            subtitle="Does the air thin out the defense? Bands aligned with FIFA altitude-acclimatization thresholds."
+            source="goals.sum / matches.count, grouped by elevation band"
+          >
+            <BarSeries data={altitudeChart} color={SERIES_COLORS.gold} valueLabel="goals/match" height={240} />
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 text-xs">
+              {altBuckets.filter((b) => b.matches > 0).map((b) => (
+                <div key={b.label} className="px-3 py-2 bg-ink-950/40 border border-ink-800 rounded-lg">
+                  <div className="text-[10px] uppercase tracking-widest text-ink-500">{b.label}</div>
+                  <div className="text-base font-bold text-white mt-0.5 tabular-nums">
+                    {(b.goals / b.matches).toFixed(2)}
+                    <span className="text-[10px] text-ink-400 font-normal ml-1">g/m</span>
+                  </div>
+                  <div className="text-[10px] text-ink-500 mt-0.5 font-mono tabular-nums">
+                    {b.goals} goals · {b.matches} matches · {b.venues} venue{b.venues === 1 ? '' : 's'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ChartCard>
+        </section>
+      )}
 
       {/* Big table */}
       <section className="max-w-7xl mx-auto px-6 py-10">
