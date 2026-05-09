@@ -154,11 +154,23 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
     .sort((a, b) => (b.elevationM ?? 0) - (a.elevationM ?? 0))
     .slice(0, 10);
 
-  // Most-used (tournaments[] length).
-  const mostUsed = [...stadiums]
-    .filter((s) => s.tournaments.length > 1)
-    .sort((a, b) => b.tournaments.length - a.tournaments.length || (b.capacity ?? 0) - (a.capacity ?? 0))
-    .slice(0, 10);
+  // Most-used venues. When a year filter is active we rank by raw
+  // match count inside the selected window (so 2026's 16-venue
+  // schedule populates the list — most are first-time hosts so the
+  // tournaments.length>1 filter would leave only Estadio Azteca).
+  // With no filter (all-time view), fall back to multi-tournament
+  // reuse, which is the more interesting cross-history signal.
+  const mostUsed = yearsActive
+    ? [...stadiums]
+        .filter((s) => (matchCountByStadium.get(s.id) ?? 0) > 0)
+        .sort((a, b) =>
+          (matchCountByStadium.get(b.id) ?? 0) - (matchCountByStadium.get(a.id) ?? 0)
+          || (b.capacity ?? 0) - (a.capacity ?? 0))
+        .slice(0, 12)
+    : [...stadiums]
+        .filter((s) => s.tournaments.length > 1)
+        .sort((a, b) => b.tournaments.length - a.tournaments.length || (b.capacity ?? 0) - (a.capacity ?? 0))
+        .slice(0, 10);
 
   // Stadiums by host country — donut.
   const byCountry = new Map<string, number>();
@@ -319,8 +331,12 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
 
         <ChartCard
           title="Most-used venues"
-          subtitle="Stadiums that hosted multiple World Cups"
-          source="GET /stadiums (filter: tournaments.length > 1)"
+          subtitle={yearsActive
+            ? `Ranked by match count in ${requestedYears.join(', ')}`
+            : 'Stadiums that hosted multiple World Cups'}
+          source={yearsActive
+            ? 'GET /matches?year=… (count grouped by stadiumId)'
+            : 'GET /stadiums (filter: tournaments.length > 1)'}
         >
           {mostUsed.length === 0 ? (
             <p className="text-sm text-ink-500">No multi-tournament venues yet.</p>
@@ -348,17 +364,30 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
                         <div className="text-[11px] text-ink-300 truncate">{s.city}, {s.country}</div>
                       </div>
                       <div className="text-right">
-                        <div className="text-sm font-bold text-accent-gold font-mono tabular-nums">
-                          {s.tournaments.length}× cups
-                          {totalMatches > 0 && (
-                            <span className="text-ink-400 font-normal ml-1.5">
+                        {yearsActive ? (
+                          <>
+                            <div className="text-sm font-bold text-accent-gold font-mono tabular-nums">
                               {totalMatches} match{totalMatches === 1 ? '' : 'es'}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[10px] text-ink-500 font-mono">
-                          {yearLabel}
-                        </div>
+                            </div>
+                            <div className="text-[10px] text-ink-500 font-mono">
+                              {yearLabel}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="text-sm font-bold text-accent-gold font-mono tabular-nums">
+                              {s.tournaments.length}× cups
+                              {totalMatches > 0 && (
+                                <span className="text-ink-400 font-normal ml-1.5">
+                                  {totalMatches} match{totalMatches === 1 ? '' : 'es'}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-ink-500 font-mono">
+                              {yearLabel}
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   </li>
