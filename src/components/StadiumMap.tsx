@@ -59,7 +59,10 @@ const HOST_BOUNDS: Record<string, { sw: [number, number]; ne: [number, number] }
   'south africa': { sw: [-34.83,  16.45], ne: [-22.13,  32.89] },
   russia:         { sw: [ 41.19,  19.64], ne: [ 81.25, 180.00] },
   qatar:          { sw: [ 24.48,  50.75], ne: [ 26.18,  51.65] },
-  canada:         { sw: [ 41.68,-141.00], ne: [ 83.11, -52.62] },
+  // Canada's true northern edge is 83°N (Ellesmere Is.), but every WC
+  // venue sits in the populated south — clip to ~55°N so the 2026
+  // tri-host view doesn't zoom out to fit Nunavut.
+  canada:         { sw: [ 41.68,-141.00], ne: [ 55.00, -52.62] },
 };
 
 /** Compute a bounding box that covers every host in the list. When
