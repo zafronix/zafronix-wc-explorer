@@ -1,19 +1,14 @@
 /**
- * Cross-page year-strip. Renders every played tournament as a chip.
+ * Cross-page year-strip. Renders every played tournament as a chip,
+ * grouped by decade so 23 years across 1930→2026 read as natural
+ * clumps and wrap balanced when they have to.
  *
- * Two modes:
- *   - linkPattern (default '/[year]/'): chip is a hard link to a
- *     specific URL. Used on Overview + Teams where pages are
- *     aggregate views — a chip click jumps to the per-tournament
- *     drill-down.
- *   - active + onClick filter (NOT this component — see /players
- *     and /stadiums YearPicker). For toggle-based filtering use
- *     those page-local pickers; the strip here is link-only.
- *
- * Always chronological (1930 → latest) so years read as a timeline.
+ * Always chronological (1930 → latest). Decade labels are subtle
+ * monospace markers above each cluster.
  */
 
 import Link from 'next/link';
+import { groupYearsByDecade, decadeShort } from '@/lib/year-groups';
 
 interface YearStripProps {
   years:        number[];
@@ -29,7 +24,7 @@ interface YearStripProps {
 export function YearStrip({
   years, linkPattern = '/:year/', highlight = [], label,
 }: YearStripProps) {
-  const sorted = [...years].sort((a, b) => a - b);
+  const groups = groupYearsByDecade(years);
   const highlightSet = new Set(highlight);
   return (
     <div>
@@ -38,24 +33,33 @@ export function YearStrip({
           {label}
         </div>
       )}
-      <div className="flex flex-wrap gap-1.5">
-        {sorted.map((y) => {
-          const url = linkPattern.replace(':year', String(y));
-          const active = highlightSet.has(y);
-          return (
-            <Link
-              key={y}
-              href={url}
-              className={`px-2.5 py-1 rounded text-[11px] font-mono ${
-                active
-                  ? 'bg-brand-600/30 border border-brand-500 text-brand-200'
-                  : 'bg-ink-800 border border-ink-700 text-ink-400 hover:text-ink-100'
-              }`}
-            >
-              {y}
-            </Link>
-          );
-        })}
+      <div className="flex flex-wrap gap-x-4 gap-y-2">
+        {groups.map((g) => (
+          <div key={g.decade}>
+            <div className="text-[9px] uppercase tracking-widest text-ink-500 mb-1 font-mono">
+              {decadeShort(g.decade)}
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {g.years.map((y) => {
+                const url = linkPattern.replace(':year', String(y));
+                const active = highlightSet.has(y);
+                return (
+                  <Link
+                    key={y}
+                    href={url}
+                    className={`px-2.5 py-1 rounded text-[11px] font-mono ${
+                      active
+                        ? 'bg-brand-600/30 border border-brand-500 text-brand-200'
+                        : 'bg-ink-800 border border-ink-700 text-ink-400 hover:text-ink-100'
+                    }`}
+                  >
+                    {y}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

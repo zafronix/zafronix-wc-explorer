@@ -24,6 +24,7 @@ import { listTournaments, getAggregatePlayers, getTournament } from '@/lib/wc-ap
 import { Donut, SERIES_COLORS, BarSeries } from '@/components/charts/Charts';
 import { Flag } from '@/components/Flag';
 import { PlayersTable, type PlayerRow } from '@/components/PlayersTable';
+import { groupYearsByDecade, decadeShort } from '@/lib/year-groups';
 
 export const dynamic = 'force-dynamic';
 
@@ -596,20 +597,29 @@ function YearPicker({ years, allYears }: { years: number[]; allYears: number[] }
       <div className="text-[10px] uppercase tracking-widest text-ink-300 mb-2">
         Tournament window — click to toggle
       </div>
-      <div className="flex flex-wrap gap-1.5">
-        {/* Chronological — 1930 → latest. Reads as a timeline. */}
-        {[...allYears].sort((a, b) => a - b).map((y) => (
-          <Link
-            key={y}
-            href={urlWith(y)}
-            className={`px-2.5 py-1 rounded text-[11px] font-mono ${
-              isActive(y)
-                ? 'bg-brand-600/30 border border-brand-500 text-brand-200'
-                : 'bg-ink-800 border border-ink-700 text-ink-400 hover:text-ink-100'
-            }`}
-          >
-            {y}
-          </Link>
+      <div className="flex flex-wrap gap-x-4 gap-y-2">
+        {/* Decade-grouped, chronological. */}
+        {groupYearsByDecade(allYears).map((g) => (
+          <div key={g.decade}>
+            <div className="text-[9px] uppercase tracking-widest text-ink-500 mb-1 font-mono">
+              {decadeShort(g.decade)}
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {g.years.map((y) => (
+                <Link
+                  key={y}
+                  href={urlWith(y)}
+                  className={`px-2.5 py-1 rounded text-[11px] font-mono ${
+                    isActive(y)
+                      ? 'bg-brand-600/30 border border-brand-500 text-brand-200'
+                      : 'bg-ink-800 border border-ink-700 text-ink-400 hover:text-ink-100'
+                  }`}
+                >
+                  {y}
+                </Link>
+              ))}
+            </div>
+          </div>
         ))}
       </div>
     </div>

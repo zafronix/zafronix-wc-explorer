@@ -12,6 +12,7 @@
  */
 
 import { useRouter, usePathname } from 'next/navigation';
+import { groupYearsByDecade, decadeShort } from '@/lib/year-groups';
 
 interface Props {
   allYears: number[];
@@ -36,8 +37,9 @@ export function CompareYearsPicker({ allYears, active }: Props) {
     router.replace(pathname);
   };
 
-  // Chronological — 1930 → latest. Reads left-to-right like a timeline.
-  const sortedYears = [...allYears].sort((a, b) => a - b);
+  // Decade-grouped chronological — chips read as natural clumps so a
+  // 23-year span doesn't wrap awkwardly with a single straggler.
+  const groups = groupYearsByDecade(allYears);
 
   return (
     <div className="mt-6">
@@ -57,25 +59,34 @@ export function CompareYearsPicker({ allYears, active }: Props) {
         )}
       </div>
 
-      <div className="flex flex-wrap gap-1.5">
-        {sortedYears.map((y) => {
-          const on = active.includes(y);
-          return (
-            <button
-              key={y}
-              type="button"
-              onClick={() => toggle(y)}
-              className={`px-2.5 py-1 rounded-md text-xs font-mono transition-colors ${
-                on
-                  ? 'bg-brand-600 text-white'
-                  : 'bg-ink-800 hover:bg-ink-700 text-ink-300 border border-ink-700'
-              }`}
-              aria-pressed={on}
-            >
-              {y}
-            </button>
-          );
-        })}
+      <div className="flex flex-wrap gap-x-4 gap-y-2">
+        {groups.map((g) => (
+          <div key={g.decade}>
+            <div className="text-[9px] uppercase tracking-widest text-ink-500 mb-1 font-mono">
+              {decadeShort(g.decade)}
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {g.years.map((y) => {
+                const on = active.includes(y);
+                return (
+                  <button
+                    key={y}
+                    type="button"
+                    onClick={() => toggle(y)}
+                    className={`px-2.5 py-1 rounded-md text-xs font-mono transition-colors ${
+                      on
+                        ? 'bg-brand-600 text-white'
+                        : 'bg-ink-800 hover:bg-ink-700 text-ink-300 border border-ink-700'
+                    }`}
+                    aria-pressed={on}
+                  >
+                    {y}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
