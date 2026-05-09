@@ -59,18 +59,34 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
     ? allStadiums.filter((s) => s.tournaments.some((y) => yearsSet.has(y)))
     : allStadiums;
 
-  // Per-stadium match counts, scoped by year. Heavy: one /matches?year=
-  // per active year. Falls through to "no count" when no years selected.
-  const matchCountByStadium = new Map<string, number>();
-  if (yearsActive) {
-    const matchLists = await Promise.all(
-      requestedYears.map((y) => listMatchesByYear(y).catch(() => [])),
-    );
-    for (const list of matchLists) {
-      for (const m of list) {
-        if (!m.stadiumId) continue;
-        matchCountByStadium.set(m.stadiumId, (matchCountByStadium.get(m.stadiumId) ?? 0) + 1);
+  // Per-stadium match counts. We always fetch ALL years so the
+  // most-used-venues leaderboard can show "1970 (2), 1986 (3), 2026
+  // (3)" — i.e. match counts per tournament — not just tournament
+  // count. With per-year caching at the API, 24 parallel fetches
+  // are warm in milliseconds.
+  const yearsToFetch = yearsActive ? requestedYears : playedYears;
+  const matchListsByYear = new Map<number, Awaited<ReturnType<typeof listMatchesByYear>>>();
+  await Promise.all(
+    yearsToFetch.map(async (y) => {
+      const list = await listMatchesByYear(y).catch(() => []);
+      matchListsByYear.set(y, list);
+    }),
+  );
+
+  // Total match count per stadium (across the active window) +
+  // per-year breakdown for the leaderboard's tournament list.
+  const matchCountByStadium  = new Map<string, number>();
+  const matchByStadiumYear   = new Map<string, Map<number, number>>();
+  for (const [year, list] of matchListsByYear) {
+    for (const m of list) {
+      if (!m.stadiumId) continue;
+      matchCountByStadium.set(m.stadiumId, (matchCountByStadium.get(m.stadiumId) ?? 0) + 1);
+      let perYear = matchByStadiumYear.get(m.stadiumId);
+      if (!perYear) {
+        perYear = new Map();
+        matchByStadiumYear.set(m.stadiumId, perYear);
       }
+      perYear.set(year, (perYear.get(year) ?? 0) + 1);
     }
   }
 
@@ -139,9 +155,11 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
       lng:        s.coords.long,
       capacity:   s.capacity,
       elevationM: s.elevationM ?? null,
-      matchCount: yearsActive
-        ? (matchCountByStadium.get(s.id) ?? 0)
-        : s.tournaments.length,
+      // Real match count (across the active window) when we have it;
+      // falls back to tournaments[].length only when match data is
+      // missing entirely. The marker info-window shows the real
+      // figure, not just "N WC editions".
+      matchCount: matchCountByStadium.get(s.id) ?? s.tournaments.length,
     }));
 
   return (
@@ -260,26 +278,44 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
             <p className="text-sm text-ink-500">No multi-tournament venues yet.</p>
           ) : (
             <ol className="space-y-1.5 text-sm">
-              {mostUsed.map((s, i) => (
-                <li key={s.id}>
-                  <div className="flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-ink-800/40">
-                    <span className="text-[11px] font-mono text-ink-500 w-5 text-right">{i + 1}.</span>
-                    <Flag country={s.country} />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold text-white truncate">{s.name}</div>
-                      <div className="text-[11px] text-ink-300 truncate">{s.city}, {s.country}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm font-bold text-accent-gold font-mono tabular-nums">
-                        {s.tournaments.length}×
+              {mostUsed.map((s, i) => {
+                const perYear = matchByStadiumYear.get(s.id);
+                const totalMatches = matchCountByStadium.get(s.id) ?? 0;
+                // Build "1970 (2), 1986 (3), 2026 (3)" — pulls real
+                // match counts per tournament where available, falls
+                // back to bare year when match data is missing.
+                const yearLabel = s.tournaments
+                  .map((y) => {
+                    const n = perYear?.get(y);
+                    return n != null ? `${y} (${n})` : `${y}`;
+                  })
+                  .join(', ');
+                return (
+                  <li key={s.id}>
+                    <div className="flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-ink-800/40">
+                      <span className="text-[11px] font-mono text-ink-500 w-5 text-right">{i + 1}.</span>
+                      <Flag country={s.country} />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold text-white truncate">{s.name}</div>
+                        <div className="text-[11px] text-ink-300 truncate">{s.city}, {s.country}</div>
                       </div>
-                      <div className="text-[10px] text-ink-500 font-mono">
-                        {s.tournaments.join(', ')}
+                      <div className="text-right">
+                        <div className="text-sm font-bold text-accent-gold font-mono tabular-nums">
+                          {s.tournaments.length}× cups
+                          {totalMatches > 0 && (
+                            <span className="text-ink-400 font-normal ml-1.5">
+                              {totalMatches} match{totalMatches === 1 ? '' : 'es'}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-ink-500 font-mono">
+                          {yearLabel}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ol>
           )}
         </ChartCard>
