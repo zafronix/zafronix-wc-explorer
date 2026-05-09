@@ -164,11 +164,16 @@ export function StadiumMap({
       });
     }
 
-    // Prefer the host-country envelope when given so a single-host
-    // view zooms to that country rather than tightly to the marker
-    // cluster. Falls back to point-bounds when the host list is
-    // empty or unrecognized — that's the cross-tournament case.
-    const hostBounds = combinedHostBounds(hosts);
+    // Pick the right bounding strategy for the visible window:
+    //   - Single host (Italy '34, Brazil '14): use the country envelope
+    //     so the map shows the whole country, not just the venue cluster.
+    //   - Multi-host (Korea+Japan '02, USA+CAN+MEX '26): a country-union
+    //     envelope is huge (Yukon to southern Mexico for '26 — basically
+    //     the whole continent) and zooms way out. Fall back to a venue-
+    //     cluster bounds with a generous padding margin so it still
+    //     "feels" country-level rather than tightly hugging markers.
+    //   - No host (cross-tournament aggregate): point bounds, tight.
+    const hostBounds = hosts.length === 1 ? combinedHostBounds(hosts) : null;
     const bounds = new google.maps.LatLngBounds();
     if (hostBounds) {
       bounds.extend({ lat: hostBounds.sw[0], lng: hostBounds.sw[1] });
@@ -176,7 +181,10 @@ export function StadiumMap({
     } else {
       points.forEach((p) => bounds.extend({ lat: p.lat, lng: p.lng }));
     }
-    mapRef.current.fitBounds(bounds, 60);
+    // Multi-host gets extra padding so the venue cluster isn't pinned
+    // edge-to-edge; single host already gets country breathing room.
+    const padding = hosts.length > 1 ? 120 : 60;
+    mapRef.current.fitBounds(bounds, padding);
 
     // Wipe previous markers (the picker / year change can re-render).
     for (const m of markersRef.current) m.setMap(null);
