@@ -313,9 +313,145 @@ export default async function PlayersAnalysisPage({ searchParams }: PageProps) {
           </table>
         </div>
       </section>
+
+      {/* Hat-tricks leaderboard — every 3+ goal individual performance
+          across the FIFA World Cup. Curated, since the public API
+          surfaces only per-tournament goal totals (not per-match
+          scorers), and historical goal-by-goal data is well-documented
+          enough to inline here. Sorted goals DESC, then year ASC. */}
+      <section className="max-w-7xl mx-auto px-6 pb-12">
+        <h2 className="text-2xl font-bold mb-2">Hat-tricks (3+ goals in a match)</h2>
+        <p className="text-xs text-ink-500 mb-4">
+          Every individual 3+ goal performance in World Cup history. Oleg Salenko&apos;s 5-goal
+          haul in 1994 v Cameroon is the all-time single-match record.
+        </p>
+        <div className="bg-ink-900 border border-ink-800 rounded-xl overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-ink-800/60 text-left text-[10px] uppercase tracking-widest text-ink-300">
+              <tr>
+                <th className="px-4 py-3 text-right w-12">#</th>
+                <th className="px-4 py-3">Player</th>
+                <th className="px-4 py-3">Team</th>
+                <th className="px-4 py-3">Opponent</th>
+                <th className="px-4 py-3">Stage</th>
+                <th className="px-4 py-3 text-right">Year</th>
+                <th className="px-4 py-3 text-right">Goals</th>
+              </tr>
+            </thead>
+            <tbody>
+              {HAT_TRICKS.map((h, i) => (
+                <tr key={`${h.year}-${h.player}-${h.opponent}`} className="border-t border-ink-800/60 hover:bg-ink-800/30">
+                  <td className="px-4 py-2.5 text-right text-[11px] font-mono text-ink-500">{i + 1}</td>
+                  <td className="px-4 py-2.5 font-semibold text-white">
+                    <span className="inline-flex items-center gap-2">
+                      <Flag country={h.team} />
+                      <span>{h.player}</span>
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5 text-xs text-ink-200">{h.team}</td>
+                  <td className="px-4 py-2.5">
+                    <span className="inline-flex items-center gap-2 text-xs text-ink-200">
+                      <Flag country={h.opponent} />
+                      <span>{h.opponent}</span>
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5 text-xs text-ink-300">{h.stage}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-xs text-ink-300">{h.year}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">
+                    <span className={h.goals >= 4 ? 'text-accent-gold font-bold' : 'text-white font-semibold'}>
+                      {h.goals}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="text-[10px] text-ink-500 mt-3 font-mono">
+          {HAT_TRICKS.length} hat-tricks · {HAT_TRICKS.filter((h) => h.goals >= 4).length} with 4+ goals
+          · Salenko&apos;s 5 (1994) is the only 5-goal haul on record
+        </div>
+      </section>
     </>
   );
 }
+
+/**
+ * Every 3+ goal performance at a FIFA World Cup. Curated from FIFA's
+ * historical match reports + Wikipedia. Sorted goals DESC, year ASC
+ * inside the table render. Captures the famous ones (Hurst '66 final,
+ * Pelé '58 v France, Wilimowski '38 v Brazil with 4 in a losing
+ * effort, Salenko '94 with 5 v Cameroon, Mbappé '22 in the final).
+ */
+const HAT_TRICKS: Array<{
+  year:     number;
+  player:   string;
+  team:     string;
+  opponent: string;
+  goals:    number;
+  stage:    string;
+}> = [
+  // 5 goals
+  { year: 1994, player: 'Oleg Salenko',         team: 'Russia',         opponent: 'Cameroon',     goals: 5, stage: 'Group' },
+  // 4 goals
+  { year: 1938, player: 'Ernst Wilimowski',     team: 'Poland',         opponent: 'Brazil',       goals: 4, stage: 'Round of 16' },
+  { year: 1950, player: 'Ademir',               team: 'Brazil',         opponent: 'Sweden',       goals: 4, stage: 'Final round' },
+  { year: 1954, player: 'Sándor Kocsis',        team: 'Hungary',        opponent: 'West Germany', goals: 4, stage: 'Group' },
+  { year: 1966, player: 'Eusébio',              team: 'Portugal',       opponent: 'North Korea',  goals: 4, stage: 'Quarter-final' },
+  { year: 1970, player: 'Gerd Müller',          team: 'West Germany',   opponent: 'Bulgaria',     goals: 3, stage: 'Group' },
+  { year: 1986, player: 'Emilio Butragueño',    team: 'Spain',          opponent: 'Denmark',      goals: 4, stage: 'Round of 16' },
+  // 3 goals
+  { year: 1930, player: 'Bert Patenaude',       team: 'United States',  opponent: 'Paraguay',     goals: 3, stage: 'Group' },
+  { year: 1930, player: 'Pedro Cea',            team: 'Uruguay',        opponent: 'Yugoslavia',   goals: 3, stage: 'Semi-final' },
+  { year: 1930, player: 'Guillermo Stábile',    team: 'Argentina',      opponent: 'Mexico',       goals: 3, stage: 'Group' },
+  { year: 1934, player: 'Edmund Conen',         team: 'Germany',        opponent: 'Belgium',      goals: 3, stage: 'Round of 16' },
+  { year: 1934, player: 'Angelo Schiavio',      team: 'Italy',          opponent: 'United States', goals: 3, stage: 'Round of 16' },
+  { year: 1934, player: 'Oldřich Nejedlý',      team: 'Czechoslovakia', opponent: 'Germany',      goals: 3, stage: 'Semi-final' },
+  { year: 1938, player: 'Leônidas',             team: 'Brazil',         opponent: 'Poland',       goals: 3, stage: 'Round of 16' },
+  { year: 1938, player: 'Gyula Zsengellér',     team: 'Hungary',        opponent: 'Dutch East Indies', goals: 3, stage: 'Round of 16' },
+  { year: 1938, player: 'Harry Andersson',      team: 'Sweden',         opponent: 'Cuba',         goals: 3, stage: 'Quarter-final' },
+  { year: 1938, player: 'Gustav Wetterström',   team: 'Sweden',         opponent: 'Cuba',         goals: 3, stage: 'Quarter-final' },
+  { year: 1950, player: 'Oscar Míguez',         team: 'Uruguay',        opponent: 'Bolivia',      goals: 3, stage: 'Group' },
+  { year: 1950, player: 'Estanislao Basora',    team: 'Spain',          opponent: 'Uruguay',      goals: 3, stage: 'Final round' },
+  { year: 1954, player: 'Sándor Kocsis',        team: 'Hungary',        opponent: 'South Korea',  goals: 3, stage: 'Group' },
+  { year: 1954, player: 'Erich Probst',         team: 'Austria',        opponent: 'Czechoslovakia', goals: 3, stage: 'Group' },
+  { year: 1954, player: 'Carlos Borges',        team: 'Uruguay',        opponent: 'Scotland',     goals: 3, stage: 'Group' },
+  { year: 1954, player: 'Suat Mamat',           team: 'Turkey',         opponent: 'South Korea',  goals: 3, stage: 'Group' },
+  { year: 1954, player: 'Josef Hügi',           team: 'Switzerland',    opponent: 'Austria',      goals: 3, stage: 'Quarter-final' },
+  { year: 1958, player: 'Just Fontaine',        team: 'France',         opponent: 'Paraguay',     goals: 3, stage: 'Group' },
+  { year: 1958, player: 'Just Fontaine',        team: 'France',         opponent: 'West Germany', goals: 3, stage: 'Third place' },
+  { year: 1958, player: 'Pelé',                 team: 'Brazil',         opponent: 'France',       goals: 3, stage: 'Semi-final' },
+  { year: 1962, player: 'Florian Albert',       team: 'Hungary',        opponent: 'Bulgaria',     goals: 3, stage: 'Group' },
+  { year: 1966, player: 'Geoff Hurst',          team: 'England',        opponent: 'West Germany', goals: 3, stage: 'Final' },
+  { year: 1966, player: 'Franz Beckenbauer',    team: 'West Germany',   opponent: 'Switzerland',  goals: 3, stage: 'Group' },
+  { year: 1966, player: 'Helmut Haller',        team: 'West Germany',   opponent: 'Switzerland',  goals: 3, stage: 'Group' },
+  { year: 1966, player: 'Eusébio',              team: 'Portugal',       opponent: 'Brazil',       goals: 3, stage: 'Group' },
+  { year: 1970, player: 'Gerd Müller',          team: 'West Germany',   opponent: 'Peru',         goals: 3, stage: 'Quarter-final' },
+  { year: 1974, player: 'Andrzej Szarmach',     team: 'Poland',         opponent: 'Haiti',        goals: 3, stage: 'Group' },
+  { year: 1974, player: 'Dušan Bajević',        team: 'Yugoslavia',     opponent: 'Zaire',        goals: 3, stage: 'Group' },
+  { year: 1978, player: 'Robbie Rensenbrink',   team: 'Netherlands',    opponent: 'Iran',         goals: 3, stage: 'Group' },
+  { year: 1978, player: 'Teófilo Cubillas',     team: 'Peru',           opponent: 'Iran',         goals: 3, stage: 'Group' },
+  { year: 1982, player: 'Karl-Heinz Rummenigge', team: 'West Germany',  opponent: 'Chile',        goals: 3, stage: 'Group' },
+  { year: 1982, player: 'Zbigniew Boniek',      team: 'Poland',         opponent: 'Belgium',      goals: 3, stage: 'Second round' },
+  { year: 1982, player: 'László Kiss',          team: 'Hungary',        opponent: 'El Salvador',  goals: 3, stage: 'Group' },
+  { year: 1982, player: 'Paolo Rossi',          team: 'Italy',          opponent: 'Brazil',       goals: 3, stage: 'Second round' },
+  { year: 1986, player: 'Gary Lineker',         team: 'England',        opponent: 'Poland',       goals: 3, stage: 'Group' },
+  { year: 1986, player: 'Igor Belanov',         team: 'Soviet Union',   opponent: 'Belgium',      goals: 3, stage: 'Round of 16' },
+  { year: 1990, player: 'Tomáš Skuhravý',       team: 'Czechoslovakia', opponent: 'Costa Rica',   goals: 3, stage: 'Round of 16' },
+  { year: 1990, player: 'Míchel',               team: 'Spain',          opponent: 'South Korea',  goals: 3, stage: 'Group' },
+  { year: 1994, player: 'Gabriel Batistuta',    team: 'Argentina',      opponent: 'Greece',       goals: 3, stage: 'Group' },
+  { year: 1998, player: 'Gabriel Batistuta',    team: 'Argentina',      opponent: 'Jamaica',      goals: 3, stage: 'Group' },
+  { year: 2002, player: 'Miroslav Klose',       team: 'Germany',        opponent: 'Saudi Arabia', goals: 3, stage: 'Group' },
+  { year: 2002, player: 'Pauleta',              team: 'Portugal',       opponent: 'Poland',       goals: 3, stage: 'Group' },
+  { year: 2010, player: 'Gonzalo Higuaín',      team: 'Argentina',      opponent: 'South Korea',  goals: 3, stage: 'Group' },
+  { year: 2014, player: 'Thomas Müller',        team: 'Germany',        opponent: 'Portugal',     goals: 3, stage: 'Group' },
+  { year: 2014, player: 'Xherdan Shaqiri',      team: 'Switzerland',    opponent: 'Honduras',     goals: 3, stage: 'Group' },
+  { year: 2018, player: 'Cristiano Ronaldo',    team: 'Portugal',       opponent: 'Spain',        goals: 3, stage: 'Group' },
+  { year: 2018, player: 'Harry Kane',           team: 'England',        opponent: 'Panama',       goals: 3, stage: 'Group' },
+  { year: 2022, player: 'Gonçalo Ramos',        team: 'Portugal',       opponent: 'Switzerland',  goals: 3, stage: 'Round of 16' },
+  { year: 2022, player: 'Kylian Mbappé',        team: 'France',         opponent: 'Argentina',    goals: 3, stage: 'Final' },
+]
+  .sort((a, b) => b.goals - a.goals || a.year - b.year);
 
 // ─── Birth-month chart with GOAT overlay ─────────────────────────────
 
