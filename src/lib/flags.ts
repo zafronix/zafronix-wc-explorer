@@ -67,7 +67,11 @@ const COUNTRIES: Record<string, FlagInfo> = (() => {
     'chile':         cur('Chile', 'cl'),
     'england':       sub('England', 'gb-eng'),
     'mexico':        cur('Mexico', 'mx'),
-    'west germany':  wiki('West Germany', 'Flag_of_Germany_(1949%E2%80%931990).svg'),
+    // West Germany's flag (1949-1990) is visually identical to modern
+    // Germany's — both black/red/gold horizontal. Wikimedia keeps a
+    // separate file but the en-dash filename returns 404. Using the
+    // canonical Flag_of_Germany.svg gets the same image.
+    'west germany':  wiki('West Germany', 'Flag_of_Germany.svg'),
     'argentina':     cur('Argentina', 'ar'),
     'spain':         cur('Spain', 'es'),
     'usa':           cur('USA', 'us'),
@@ -81,16 +85,22 @@ const COUNTRIES: Record<string, FlagInfo> = (() => {
     'qatar':         cur('Qatar', 'qa'),
     'canada':        cur('Canada', 'ca'),
 
-    // Champions / runner-ups / common participants (covers top
-    // 30-ish nations by WC appearances).
+    // Champions / runner-ups / common participants
     'netherlands':       cur('Netherlands', 'nl'),
-    'czechoslovakia':    wiki('Czechoslovakia', 'Flag_of_the_Czech_Republic.svg'),
+    // Czechoslovakia's flag is identical to today's Czech Republic
+    // flag — Czechs kept it after the 1993 split. Use Flag_of_
+    // Czechoslovakia.svg directly (verified 200 OK).
+    'czechoslovakia':    wiki('Czechoslovakia', 'Flag_of_Czechoslovakia.svg'),
     'czech republic':    cur('Czech Republic', 'cz'),
     'hungary':           cur('Hungary', 'hu'),
     'austria':           cur('Austria', 'at'),
     'soviet union':      wiki('Soviet Union', 'Flag_of_the_Soviet_Union.svg'),
     'russia (soviet)':   wiki('Soviet Union', 'Flag_of_the_Soviet_Union.svg'),
-    'yugoslavia':        wiki('Yugoslavia', 'Flag_of_Yugoslavia_(1946%E2%80%931992).svg'),
+    // Plain "Yugoslavia" filename without the (1946-1992) year-range
+    // — that variant 404s due to en-dash encoding. The plain file is
+    // the SFRY flag.
+    'yugoslavia':        wiki('Yugoslavia', 'Flag_of_Yugoslavia.svg'),
+    'fr yugoslavia':     wiki('FR Yugoslavia', 'Flag_of_FR_Yugoslavia.svg'),
     'serbia':            cur('Serbia', 'rs'),
     'serbia and montenegro': wiki('Serbia and Montenegro', 'Flag_of_Serbia_and_Montenegro.svg'),
     'croatia':           cur('Croatia', 'hr'),
@@ -102,7 +112,9 @@ const COUNTRIES: Record<string, FlagInfo> = (() => {
     'romania':           cur('Romania', 'ro'),
     'bulgaria':          cur('Bulgaria', 'bg'),
     'turkey':            cur('Turkey', 'tr'),
+    // Source data uses both "Ireland" and "Republic of Ireland" — alias.
     'ireland':           cur('Ireland', 'ie'),
+    'republic of ireland': cur('Republic of Ireland', 'ie'),
     'northern ireland':  sub('Northern Ireland', 'gb-nir'),
     'scotland':          sub('Scotland', 'gb-sct'),
     'wales':             sub('Wales', 'gb-wls'),
@@ -120,6 +132,9 @@ const COUNTRIES: Record<string, FlagInfo> = (() => {
     'senegal':           cur('Senegal', 'sn'),
     'zaire':             wiki('Zaire', 'Flag_of_Zaire.svg'),
     'dr congo':          cur('DR Congo', 'cd'),
+    'angola':            cur('Angola', 'ao'),
+    'cape verde':        cur('Cape Verde', 'cv'),
+    'togo':              cur('Togo', 'tg'),
 
     // Asia / Oceania
     'australia':         cur('Australia', 'au'),
@@ -132,6 +147,11 @@ const COUNTRIES: Record<string, FlagInfo> = (() => {
     'north korea':       cur('North Korea', 'kp'),
     'korea dpr':         cur('Korea DPR', 'kp'),
     'india':             cur('India', 'in'),
+    'israel':            cur('Israel', 'il'),
+    'jordan':            cur('Jordan', 'jo'),
+    'kuwait':            cur('Kuwait', 'kw'),
+    'united arab emirates': cur('United Arab Emirates', 'ae'),
+    'uzbekistan':        cur('Uzbekistan', 'uz'),
 
     // Americas
     'colombia':          cur('Colombia', 'co'),
@@ -148,6 +168,8 @@ const COUNTRIES: Record<string, FlagInfo> = (() => {
     'haiti':             cur('Haiti', 'ht'),
     'trinidad and tobago': cur('Trinidad and Tobago', 'tt'),
     'cuba':              cur('Cuba', 'cu'),
+    'curaçao':           cur('Curaçao', 'cw'),
+    'curacao':           cur('Curaçao', 'cw'),  // ASCII fallback
 
     // Europe — additional
     'greece':            cur('Greece', 'gr'),

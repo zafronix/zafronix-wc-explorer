@@ -288,29 +288,23 @@ export default async function YearPage({ params }: { params: Promise<{ year: str
         )}
       </section>
 
-      {/* Champion's KO path */}
-      {champion && champion.knockoutPath.length > 0 && (
+      {/* Champion's full road to the title — group stage through final.
+          Falls back to the knockoutPath summary when match data isn't
+          available (older tournaments). */}
+      {champion && (
         <section className="max-w-7xl mx-auto px-6 pb-6">
           <div className="bg-ink-900 border border-accent-gold/30 rounded-2xl p-5">
             <h2 className="text-sm font-bold text-white">
               {champion.name}&apos;s road to the title
             </h2>
             <div className="text-[11px] text-ink-300 mb-4">
-              Knockout-stage results, in order
+              Every match {champion.name} played, group stage through the final
             </div>
-            <ol className="space-y-1.5 text-sm">
-              {champion.knockoutPath.map((m, i) => (
-                <li key={i} className="flex items-center gap-3 flex-wrap px-3 py-2 rounded-lg bg-ink-950/40">
-                  <span className="text-[10px] text-ink-300 uppercase tracking-wider w-16">{m.stage}</span>
-                  <span className="text-white font-semibold inline-flex items-center gap-1.5">
-                    vs <Flag country={m.opponent} /> {m.opponent}
-                  </span>
-                  <span className="ml-auto font-mono tabular-nums text-accent-gold font-bold">
-                    {m.result}
-                  </span>
-                </li>
-              ))}
-            </ol>
+            <ChampionRoad
+              championName={champion.name}
+              matches={matches}
+              fallback={champion.knockoutPath}
+            />
           </div>
         </section>
       )}
@@ -363,6 +357,160 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
       {hint && <div className="text-[10px] text-ink-500 mt-0.5">{hint}</div>}
     </div>
   );
+}
+
+/**
+ * Render the champion's complete road — every match they played
+ * across the tournament, grouped by stage. Pulled from the per-
+ * tournament match list rather than the team's knockoutPath
+ * summary so we get group-stage games too.
+ *
+ * Falls back to the legacy knockoutPath display when no match data
+ * is available (older tournaments without per-match records, or
+ * when the API call fails). The fallback is the prior implementation.
+ */
+function ChampionRoad({
+  championName, matches, fallback,
+}: {
+  championName: string;
+  matches: import('@/lib/wc-api').ApiMatch[];
+  fallback: import('@/lib/wc-api').ApiKnockoutMatch[];
+}) {
+  // Filter to matches the champion played — chronological ordering
+  // by date (kickoff if present, falling back to date only).
+  const championMatches = matches
+    .filter((m) => m.homeTeam === championName || m.awayTeam === championName)
+    .sort((a, b) =>
+      (a.kickoffUtc ?? a.date).localeCompare(b.kickoffUtc ?? b.date),
+    );
+
+  if (championMatches.length === 0) {
+    // Fallback: KO-only summary that ships with the team object.
+    if (fallback.length === 0) {
+      return <p className="text-sm text-ink-500">No match data on file.</p>;
+    }
+    return (
+      <ol className="space-y-1.5 text-sm">
+        {fallback.map((m, i) => (
+          <li key={i} className="flex items-center gap-3 flex-wrap px-3 py-2 rounded-lg bg-ink-950/40">
+            <span className="text-[10px] text-ink-300 uppercase tracking-wider w-16">{stageLabel(m.stage)}</span>
+            <span className="text-white font-semibold inline-flex items-center gap-1.5">
+              vs <Flag country={m.opponent} /> {m.opponent}
+            </span>
+            <span className="ml-auto font-mono tabular-nums text-accent-gold font-bold">
+              {m.result}
+            </span>
+          </li>
+        ))}
+      </ol>
+    );
+  }
+
+  // Compute champion's perspective per match.
+  type View = {
+    stage: string;
+    opponent: string | null;
+    score: string;
+    outcome: 'W' | 'D' | 'L';
+    extraTime: boolean;
+    pens: { home: number; away: number } | null;
+    date: string;
+  };
+  const rows: View[] = championMatches.map((m) => {
+    const isHome = m.homeTeam === championName;
+    const opp = isHome ? m.awayTeam : m.homeTeam;
+    const us  = isHome ? (m.homeScore ?? 0) : (m.awayScore ?? 0);
+    const them = isHome ? (m.awayScore ?? 0) : (m.homeScore ?? 0);
+    const outcome: 'W' | 'D' | 'L' = us > them ? 'W' : us < them ? 'L' : 'D';
+    return {
+      stage:    stageLabel(m.stage),
+      opponent: opp,
+      score:    `${us}–${them}`,
+      outcome,
+      extraTime: m.extraTime,
+      pens:     m.penalties,
+      date:     m.date,
+    };
+  });
+
+  // Tally — wins / draws / losses + goals for / against. Group-stage
+  // draws are common; champions with zero losses through the cup
+  // jump out.
+  const w = rows.filter((r) => r.outcome === 'W').length;
+  const d = rows.filter((r) => r.outcome === 'D').length;
+  const l = rows.filter((r) => r.outcome === 'L').length;
+  const gf = championMatches.reduce((s, m) =>
+    s + (m.homeTeam === championName ? (m.homeScore ?? 0) : (m.awayScore ?? 0)), 0);
+  const ga = championMatches.reduce((s, m) =>
+    s + (m.homeTeam === championName ? (m.awayScore ?? 0) : (m.homeScore ?? 0)), 0);
+
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-3 mb-4 text-xs">
+        <span className="font-mono text-emerald-400">{w}W</span>
+        <span className="font-mono text-ink-300">{d}D</span>
+        <span className="font-mono text-red-400">{l}L</span>
+        <span className="text-ink-500">·</span>
+        <span className="font-mono text-accent-gold">
+          {gf} <span className="text-ink-400">GF</span>
+        </span>
+        <span className="font-mono text-ink-300">
+          {ga} <span className="text-ink-400">GA</span>
+        </span>
+        <span className="text-ink-500">·</span>
+        <span className="text-ink-400">{championMatches.length} match{championMatches.length === 1 ? '' : 'es'}</span>
+      </div>
+      <ol className="space-y-1.5 text-sm">
+        {rows.map((r, i) => {
+          const outcomeColor =
+            r.outcome === 'W' ? 'bg-emerald-700/20 border-emerald-700/40 text-emerald-300' :
+            r.outcome === 'L' ? 'bg-red-700/20 border-red-700/40 text-red-300' :
+                                'bg-ink-700/30 border-ink-600/40 text-ink-300';
+          return (
+            <li
+              key={i}
+              className="flex items-center gap-3 flex-wrap px-3 py-2 rounded-lg bg-ink-950/40"
+            >
+              <span className="text-[10px] text-ink-300 uppercase tracking-wider w-20">{r.stage}</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded border font-bold ${outcomeColor}`}>
+                {r.outcome}
+              </span>
+              <span className="text-white font-semibold inline-flex items-center gap-1.5">
+                vs <Flag country={r.opponent ?? ''} /> {r.opponent ?? '—'}
+              </span>
+              <span className="text-[10px] text-ink-500 font-mono ml-2">{r.date}</span>
+              <span className="ml-auto font-mono tabular-nums text-accent-gold font-bold">
+                {r.score}
+                {r.extraTime && <span className="text-[9px] text-amber-300 ml-1">AET</span>}
+                {r.pens && (
+                  <span className="text-[9px] text-amber-300 ml-1">
+                    pens {r.pens.home}–{r.pens.away}
+                  </span>
+                )}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </>
+  );
+}
+
+/** Compact stage labeler. The wc-api stores raw values like
+ *  "group_a", "r16", "final"; this normalizes to display strings. */
+function stageLabel(stage: string): string {
+  const s = stage.toLowerCase();
+  if (s.startsWith('group')) {
+    const m = s.match(/^group[_\s]*([a-h])/i);
+    return m ? `Group ${m[1].toUpperCase()}` : 'Group';
+  }
+  if (s === 'r32' || s.includes('round_of_32')) return 'R32';
+  if (s === 'r16' || s.includes('round_of_16')) return 'R16';
+  if (s === 'qf'  || s.includes('quarter'))     return 'QF';
+  if (s === 'sf'  || s.includes('semi'))        return 'SF';
+  if (s.includes('third'))                       return '3rd-place';
+  if (s === 'final' || /\bfinal\b/.test(s))     return 'Final';
+  return stage;
 }
 
 function PodiumStep({ place, team }: { place: 1 | 2 | 3; team: string | null }) {
