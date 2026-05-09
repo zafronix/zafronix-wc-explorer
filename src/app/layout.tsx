@@ -14,7 +14,12 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     siteName: 'Zafronix WC Explorer',
-    images: ['/wc-explorer/og.png'],
+    // FIXME: should be a WC-Explorer-branded card, not the generic
+    // brand one. The original /wc-explorer/og.png was never generated
+    // and 500'd, so Facebook/Twitter previews shipped with no image.
+    // Falling back to the shared brand OG card until we build a
+    // per-page OG generator. Tracked separately.
+    images: ['https://api.zafronix.com/static/og-card.png'],
   },
   twitter: { card: 'summary_large_image' },
 };
