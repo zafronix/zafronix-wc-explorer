@@ -18,6 +18,7 @@ import {
   AreaSeries, BarSeries, LineSeries, Donut, SERIES_COLORS,
 } from '@/components/charts/Charts';
 import { Flag, HostFlags } from '@/components/Flag';
+import { YearStrip } from '@/components/YearStrip';
 import type { Metadata } from 'next';
 
 export const dynamic = 'force-dynamic';
@@ -132,8 +133,16 @@ export default async function LandingPage() {
             </div>
           </div>
 
+          {/* Year strip — quick jump into any tournament. */}
+          <div className="mt-10">
+            <YearStrip
+              years={tournaments.map((t) => t.year)}
+              label="Jump to a tournament"
+            />
+          </div>
+
           {/* Big numbers */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-12">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-8">
             <BigNumber
               label="Tournaments played"
               value={playedCount.toLocaleString()}

@@ -39,7 +39,9 @@ export default async function ComparePage({
     : [];
 
   // Default: 3 most-recent played
-  const years = requested.length >= 2 ? requested : playedYears.slice(-3);
+  // Min 1 — operator can render a single tournament in this layout
+  // when they want the comparative table treatment for one year.
+  const years = requested.length >= 1 ? requested : playedYears.slice(-3);
 
   const rows = await compareTournaments(years);
   // Server may return rows in any order; pin to the user's request order
@@ -100,9 +102,9 @@ export default async function ComparePage({
         </div>
       </section>
 
-      {rows.length < 2 ? (
+      {rows.length < 1 ? (
         <div className="max-w-7xl mx-auto px-6 py-20 text-center">
-          <p className="text-ink-300">Pick at least 2 tournaments to compare.</p>
+          <p className="text-ink-300">Pick at least one tournament.</p>
         </div>
       ) : (
         <>

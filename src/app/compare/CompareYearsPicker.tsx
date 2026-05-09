@@ -4,9 +4,10 @@
  * Multi-select chips for the compare view. Updates ?years=… in the URL
  * with router.replace so back/forward navigation Just Works.
  *
- * Newest years first; "Selected: N" pill on top so users see what's
- * about to render. Disabled when zero or one year is selected — the
- * compare view requires 2+.
+ * Chronological order (1930 → latest) — operators read time left-to-
+ * right. Single-tournament view is allowed (min 1) so the page can
+ * stand in for the per-year drill-down when you're already in
+ * "compare" mode.
  */
 
 import { useRouter, usePathname } from 'next/navigation';
@@ -27,7 +28,7 @@ export function CompareYearsPicker({ allYears, active }: Props) {
   };
 
   const apply = () => {
-    if (picked.length < 2) return;
+    if (picked.length < 1) return;
     const sorted = [...picked].sort((a, b) => a - b);
     router.replace(`${pathname}?years=${sorted.join(',')}`);
   };
@@ -37,15 +38,15 @@ export function CompareYearsPicker({ allYears, active }: Props) {
     router.replace(pathname);
   };
 
-  // Show newest first — that's what people compare
-  const sortedYears = [...allYears].sort((a, b) => b - a);
+  // Chronological — 1930 → latest. Reads left-to-right like a timeline.
+  const sortedYears = [...allYears].sort((a, b) => a - b);
 
   return (
     <div className="mt-6">
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div className="text-sm text-ink-300">
           <span className="font-mono text-brand-400">{picked.length}</span> selected
-          <span className="text-ink-500 ml-1">(min 2)</span>
+          <span className="text-ink-500 ml-1">(min 1)</span>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -58,7 +59,7 @@ export function CompareYearsPicker({ allYears, active }: Props) {
           <button
             type="button"
             onClick={apply}
-            disabled={picked.length < 2}
+            disabled={picked.length < 1}
             className="text-xs px-4 py-1.5 rounded-md bg-brand-600 hover:bg-brand-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold"
           >
             Compare →

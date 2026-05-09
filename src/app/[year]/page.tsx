@@ -247,7 +247,11 @@ export default async function YearPage({ params }: { params: Promise<{ year: str
                 All stadiums →
               </Link>
             </div>
-            <StadiumMap points={stadiumPoints} height={420} />
+            <StadiumMap
+              points={stadiumPoints}
+              height={420}
+              hosts={meta.host}
+            />
             {/* Compact list under the map for accessibility + quick scan. */}
             <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs">
               {stadiumPoints.map((p) => (

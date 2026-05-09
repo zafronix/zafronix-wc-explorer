@@ -28,6 +28,58 @@ export interface StadiumMapPoint {
   matchCount: number;
 }
 
+/** Approximate country-bounding boxes for the WC host nations.
+ *  Used to zoom the map onto a single host (or multiple co-hosts)
+ *  when the operator filters the view by tournament.
+ *
+ *  These are deliberate convex-hull approximations rather than
+ *  precise geometry — Google Maps' fitBounds takes a 2-corner
+ *  rectangle and the result is "the country fills the viewport
+ *  with some breathing room", which is what we want.
+ *
+ *  Coverage: every host 1930-2026. Lookups are case-insensitive. */
+const HOST_BOUNDS: Record<string, { sw: [number, number]; ne: [number, number] }> = {
+  uruguay:        { sw: [-34.97, -58.45], ne: [-30.10, -53.07] },
+  italy:          { sw: [ 35.50,   6.60], ne: [ 47.10,  18.55] },
+  france:         { sw: [ 41.30,  -5.20], ne: [ 51.10,   9.66] },
+  brazil:         { sw: [-33.80, -73.99], ne: [  5.27, -34.79] },
+  switzerland:    { sw: [ 45.80,   5.96], ne: [ 47.81,  10.49] },
+  sweden:         { sw: [ 55.34,  10.96], ne: [ 69.06,  24.17] },
+  chile:          { sw: [-55.98, -75.65], ne: [-17.51, -66.42] },
+  england:        { sw: [ 49.96,  -6.42], ne: [ 55.81,   1.76] },
+  mexico:         { sw: [ 14.55,-117.13], ne: [ 32.72, -86.81] },
+  'west germany': { sw: [ 47.27,   5.87], ne: [ 55.06,  15.04] },
+  argentina:      { sw: [-55.05, -73.41], ne: [-21.78, -53.63] },
+  spain:          { sw: [ 35.95,  -9.39], ne: [ 43.79,   3.04] },
+  usa:            { sw: [ 24.40,-125.00], ne: [ 49.40, -66.93] },
+  'united states':{ sw: [ 24.40,-125.00], ne: [ 49.40, -66.93] },
+  'south korea':  { sw: [ 33.10, 124.61], ne: [ 38.61, 130.92] },
+  japan:          { sw: [ 30.95, 129.41], ne: [ 45.55, 145.82] },
+  germany:        { sw: [ 47.27,   5.87], ne: [ 55.06,  15.04] },
+  'south africa': { sw: [-34.83,  16.45], ne: [-22.13,  32.89] },
+  russia:         { sw: [ 41.19,  19.64], ne: [ 81.25, 180.00] },
+  qatar:          { sw: [ 24.48,  50.75], ne: [ 26.18,  51.65] },
+  canada:         { sw: [ 41.68,-141.00], ne: [ 83.11, -52.62] },
+};
+
+/** Compute a bounding box that covers every host in the list. When
+ *  hosts is empty or unknown, returns null (caller should fall back
+ *  to point-bounds). */
+function combinedHostBounds(hosts: string[]): { sw: [number, number]; ne: [number, number] } | null {
+  const matched = hosts
+    .map((h) => HOST_BOUNDS[h.toLowerCase()])
+    .filter((b): b is { sw: [number, number]; ne: [number, number] } => !!b);
+  if (matched.length === 0) return null;
+  let south =  90, west =  180, north = -90, east = -180;
+  for (const b of matched) {
+    south = Math.min(south, b.sw[0]);
+    west  = Math.min(west,  b.sw[1]);
+    north = Math.max(north, b.ne[0]);
+    east  = Math.max(east,  b.ne[1]);
+  }
+  return { sw: [south, west], ne: [north, east] };
+}
+
 // Dark map style — matches the explorer's ink palette.
 const DARK_STYLE = [
   { elementType: 'geometry', stylers: [{ color: '#0e0c1c' }] },
@@ -56,10 +108,15 @@ function capacityColor(capacity: number | null, max: number): string {
 }
 
 export function StadiumMap({
-  points, height = 420,
+  points, height = 420, hosts = [],
 }: {
   points: StadiumMapPoint[];
   height?: number;
+  /** Host country/countries for the current view. When provided,
+   *  fitBounds prefers the host-country envelope over the marker
+   *  spread so the map zooms in on Italy (1934, 1990) or Korea+Japan
+   *  (2002) rather than fitting tightly to the venue cluster. */
+  hosts?: string[];
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
@@ -92,12 +149,6 @@ export function StadiumMap({
     if (!ready || !containerRef.current || points.length === 0) return;
 
     if (!mapRef.current) {
-      // Auto-fit on the first render. Subsequent updates re-bound
-      // (so changing tournaments re-zooms). Using bounds rather than
-      // a fixed center because hosts are scattered (1930 Uruguay vs
-      // 1994 USA vs 2002 Korea+Japan).
-      const bounds = new google.maps.LatLngBounds();
-      points.forEach((p) => bounds.extend({ lat: p.lat, lng: p.lng }));
       mapRef.current = new google.maps.Map(containerRef.current, {
         disableDefaultUI: false,
         zoomControl: true,
@@ -108,8 +159,21 @@ export function StadiumMap({
         styles: DARK_STYLE,
         backgroundColor: '#0e0c1c',
       });
-      mapRef.current.fitBounds(bounds, 60);
     }
+
+    // Prefer the host-country envelope when given so a single-host
+    // view zooms to that country rather than tightly to the marker
+    // cluster. Falls back to point-bounds when the host list is
+    // empty or unrecognized — that's the cross-tournament case.
+    const hostBounds = combinedHostBounds(hosts);
+    const bounds = new google.maps.LatLngBounds();
+    if (hostBounds) {
+      bounds.extend({ lat: hostBounds.sw[0], lng: hostBounds.sw[1] });
+      bounds.extend({ lat: hostBounds.ne[0], lng: hostBounds.ne[1] });
+    } else {
+      points.forEach((p) => bounds.extend({ lat: p.lat, lng: p.lng }));
+    }
+    mapRef.current.fitBounds(bounds, 60);
 
     // Wipe previous markers (the picker / year change can re-render).
     for (const m of markersRef.current) m.setMap(null);

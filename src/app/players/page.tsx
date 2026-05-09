@@ -417,7 +417,8 @@ function YearPicker({ years, allYears }: { years: number[]; allYears: number[] }
         Tournament window — click to toggle
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {allYears.map((y) => (
+        {/* Chronological — 1930 → latest. Reads as a timeline. */}
+        {[...allYears].sort((a, b) => a - b).map((y) => (
           <Link
             key={y}
             href={urlWith(y)}

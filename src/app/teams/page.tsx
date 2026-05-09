@@ -24,6 +24,7 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import { listTournaments, getTournament } from '@/lib/wc-api';
 import { Flag } from '@/components/Flag';
+import { YearStrip } from '@/components/YearStrip';
 import { BarSeries, Donut, SERIES_COLORS } from '@/components/charts/Charts';
 
 export const dynamic = 'force-dynamic';
@@ -162,6 +163,12 @@ export default async function TeamsPage() {
             (1930→{lastPlayed}). {totalAppearances.toLocaleString()} total team-appearances. Powered by{' '}
             <span className="font-mono text-brand-400">GET /tournaments/&lbrace;year&rbrace;</span> aggregated client-side.
           </p>
+
+          {/* Year strip — quick jump to per-tournament drill-down. */}
+          <div className="mt-6">
+            <YearStrip years={playedYears} label="Jump to a tournament" />
+          </div>
+
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-8">
             <Stat label="Distinct nations" value={allTeams.length.toString()} />
             <Stat label="Total appearances" value={totalAppearances.toLocaleString()} />

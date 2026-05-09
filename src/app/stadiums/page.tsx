@@ -173,11 +173,13 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
               label="Oldest"
               value={oldest?.opened != null ? String(oldest.opened) : '—'}
               hint={oldest?.name}
+              flagCountry={oldest?.country}
             />
             <Stat
               label="Newest"
               value={newest?.opened != null ? String(newest.opened) : '—'}
               hint={newest?.name}
+              flagCountry={newest?.country}
             />
           </div>
         </div>
@@ -202,7 +204,19 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
               {mapPoints.length} venue{mapPoints.length === 1 ? '' : 's'}
             </span>
           </div>
-          <StadiumMap points={mapPoints} height={460} />
+          <StadiumMap
+            points={mapPoints}
+            height={460}
+            hosts={
+              yearsActive
+                ? Array.from(new Set(
+                    requestedYears.flatMap((y) =>
+                      tournaments.find((t) => t.year === y)?.host ?? [],
+                    ),
+                  ))
+                : []
+            }
+          />
         </div>
       </section>
 
@@ -390,12 +404,22 @@ function SortLink({ current, key_, label }: { current: string; key_: string; lab
   );
 }
 
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function Stat({ label, value, hint, flagCountry }: {
+  label: string;
+  value: string;
+  hint?: string;
+  flagCountry?: string;
+}) {
   return (
     <div className="bg-ink-900/80 backdrop-blur border border-ink-800 rounded-xl p-4">
       <div className="text-2xl sm:text-3xl font-black text-white">{value}</div>
       <div className="text-[10px] uppercase tracking-widest text-ink-300 mt-1">{label}</div>
-      {hint && <div className="text-[10px] text-ink-500 mt-0.5 truncate" title={hint}>{hint}</div>}
+      {hint && (
+        <div className="text-[10px] text-ink-500 mt-0.5 truncate flex items-center gap-1" title={hint}>
+          {flagCountry && <Flag country={flagCountry} />}
+          <span className="truncate">{hint}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -426,7 +450,8 @@ function YearPicker({ years, allYears }: { years: number[]; allYears: number[] }
         )}
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {allYears.map((y) => (
+        {/* Chronological — 1930 → latest. */}
+        {[...allYears].sort((a, b) => a - b).map((y) => (
           <Link
             key={y}
             href={urlWith(y)}
