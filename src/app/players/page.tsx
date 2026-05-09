@@ -500,8 +500,10 @@ function BirthMonthChart({
                     <span
                       key={g.name}
                       title={`${g.name} (${g.team}, ${g.dob})`}
-                      className="block w-2 h-2 rounded-full bg-accent-gold border border-amber-700 shadow-[0_0_4px_rgba(250,204,21,0.6)]"
-                    />
+                      className="inline-flex"
+                    >
+                      <Flag country={g.team} size={20} />
+                    </span>
                   ))}
                   {pins.length > 3 && (
                     <span className="text-[8px] text-accent-gold/70">+{pins.length - 3}</span>
@@ -517,8 +519,8 @@ function BirthMonthChart({
       {goats.length > 0 && (
         <div className="mt-4 pt-4 border-t border-ink-800 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
           {goats.map((g) => (
-            <div key={g.name} className="flex items-center gap-1.5">
-              <span className="block w-1.5 h-1.5 rounded-full bg-accent-gold flex-shrink-0" />
+            <div key={g.name} className="flex items-center gap-1.5 min-w-0">
+              <Flag country={g.team} size={20} />
               <span className="text-ink-200 truncate">{g.name}</span>
               <span className="text-ink-500 truncate">· {MONTH_LABELS[Number(g.dob.slice(5, 7)) - 1]}</span>
             </div>
