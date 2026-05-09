@@ -85,6 +85,20 @@ export default async function YearPage({ params }: { params: Promise<{ year: str
 
   const champion = meta.champion ? teams.find((tm) => tm.name === meta.champion) : undefined;
 
+  // Player-name → team-name index. Used to add flags next to award
+  // recipients (Best Player, Best GK, Best Young, Top Scorer) — those
+  // fields on the API are just the player name with no team. Single
+  // pass over every squad on every team.
+  const playerTeam = new Map<string, string>();
+  for (const team of teams) {
+    for (const p of team.squad ?? []) {
+      // Some players appear in multiple tournaments; first-write-wins
+      // is fine since this index is per-tournament.
+      if (!playerTeam.has(p.name)) playerTeam.set(p.name, team.name);
+      if (p.fullName && !playerTeam.has(p.fullName)) playerTeam.set(p.fullName, team.name);
+    }
+  }
+
   // Confederation breakdown
   const byConfed: Record<string, number> = {};
   for (const team of teams) {
@@ -181,13 +195,21 @@ export default async function YearPage({ params }: { params: Promise<{ year: str
       </section>
 
       {/* Awards row */}
-      {(meta.bestPlayer || meta.bestYoungPlayer || meta.bestGoalkeeper || meta.ballName || meta.mascot) && (
+      {(meta.bestPlayer || meta.bestYoungPlayer || meta.bestGoalkeeper || meta.ballName || meta.mascot || meta.topScorer) && (
         <section className="max-w-7xl mx-auto px-6 pb-6">
-          <h2 className="text-sm uppercase tracking-widest text-ink-300 mb-3">Awards & marks</h2>
+          <h2 className="text-sm uppercase tracking-widest text-ink-300 mb-3">Awards &amp; marks</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-            {meta.bestPlayer       && <Award label="Best player"  value={meta.bestPlayer} />}
-            {meta.bestYoungPlayer  && <Award label="Best young"   value={meta.bestYoungPlayer} />}
-            {meta.bestGoalkeeper   && <Award label="Best GK"      value={meta.bestGoalkeeper} />}
+            {meta.topScorer && (
+              <Award
+                label="Top scorer"
+                value={meta.topScorer.player}
+                hint={`${meta.topScorer.goals} goals`}
+                team={playerTeam.get(meta.topScorer.player)}
+              />
+            )}
+            {meta.bestPlayer       && <Award label="Best player"  value={meta.bestPlayer}       team={playerTeam.get(meta.bestPlayer)} />}
+            {meta.bestYoungPlayer  && <Award label="Best young"   value={meta.bestYoungPlayer}  team={playerTeam.get(meta.bestYoungPlayer)} />}
+            {meta.bestGoalkeeper   && <Award label="Best GK"      value={meta.bestGoalkeeper}   team={playerTeam.get(meta.bestGoalkeeper)} />}
             {meta.ballName         && <Award label="Match ball"   value={meta.ballName} />}
             {meta.mascot           && <Award label="Mascot"       value={meta.mascot} />}
           </div>
@@ -531,11 +553,19 @@ function PodiumStep({ place, team }: { place: 1 | 2 | 3; team: string | null }) 
   );
 }
 
-function Award({ label, value }: { label: string; value: string }) {
+function Award({ label, value, hint, team }: { label: string; value: string; hint?: string; team?: string }) {
   return (
     <div className="bg-ink-900 border border-ink-800 rounded-xl p-3">
       <div className="text-[10px] uppercase tracking-widest text-ink-300">{label}</div>
-      <div className="text-sm font-semibold text-white mt-0.5 truncate" title={value}>{value}</div>
+      <div className="text-sm font-semibold text-white mt-0.5 inline-flex items-center gap-1.5 max-w-full" title={team ? `${value} (${team})` : value}>
+        {team && <Flag country={team} />}
+        <span className="truncate">{value}</span>
+      </div>
+      {(hint || team) && (
+        <div className="text-[10px] text-ink-500 mt-0.5 truncate">
+          {[team, hint].filter(Boolean).join(' · ')}
+        </div>
+      )}
     </div>
   );
 }

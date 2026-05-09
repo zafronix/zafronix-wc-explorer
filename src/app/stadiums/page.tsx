@@ -19,9 +19,10 @@
 
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { listStadiums, type ApiStadium } from '@/lib/wc-api';
+import { listStadiums, listTournaments, listMatchesByYear, type ApiStadium } from '@/lib/wc-api';
 import { Flag } from '@/components/Flag';
 import { BarSeries, Donut, SERIES_COLORS } from '@/components/charts/Charts';
+import { StadiumMap, type StadiumMapPoint } from '@/components/StadiumMap';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,14 +32,47 @@ export const metadata: Metadata = {
 };
 
 interface PageProps {
-  searchParams: Promise<{ sort?: string }>;
+  searchParams: Promise<{ sort?: string; years?: string }>;
 }
 
 export default async function StadiumsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const sort = sp.sort ?? 'tournaments';
 
-  const stadiums = await listStadiums();
+  const [allStadiums, tournaments] = await Promise.all([
+    listStadiums(),
+    listTournaments(),
+  ]);
+  const playedYears = tournaments.filter((t) => t.champion).map((t) => t.year);
+
+  // Year picker — same semantics as the Players page. Empty = all years.
+  // When years are selected, narrow stadiums to those whose tournaments[]
+  // intersects the selection. The match-count overlay also re-aggregates
+  // to just the selected years.
+  const requestedYears = sp.years
+    ? sp.years.split(',').map((y) => Number(y.trim())).filter((y) => playedYears.includes(y))
+    : [];
+  const yearsActive = requestedYears.length > 0;
+  const yearsSet = new Set(requestedYears);
+
+  const stadiums = yearsActive
+    ? allStadiums.filter((s) => s.tournaments.some((y) => yearsSet.has(y)))
+    : allStadiums;
+
+  // Per-stadium match counts, scoped by year. Heavy: one /matches?year=
+  // per active year. Falls through to "no count" when no years selected.
+  const matchCountByStadium = new Map<string, number>();
+  if (yearsActive) {
+    const matchLists = await Promise.all(
+      requestedYears.map((y) => listMatchesByYear(y).catch(() => [])),
+    );
+    for (const list of matchLists) {
+      for (const m of list) {
+        if (!m.stadiumId) continue;
+        matchCountByStadium.set(m.stadiumId, (matchCountByStadium.get(m.stadiumId) ?? 0) + 1);
+      }
+    }
+  }
 
   // ─── Aggregates ──────────────────────────────────────────────────
   const totalCapacity = stadiums.reduce((s, x) => s + (x.capacity ?? 0), 0);
@@ -89,6 +123,27 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
   // Sortable table.
   const sorted = sortStadiums(stadiums, sort);
 
+  // Map points — every filtered stadium with valid coords. Match
+  // count comes from the year-scoped fetches above; when no years
+  // are active we use tournaments.length as a proxy ("how many WCs
+  // did this venue host"), which the operator sees in the info
+  // window as "WC editions" instead of "matches".
+  const mapPoints: StadiumMapPoint[] = stadiums
+    .filter((s) => s.coords && s.coords.lat != null && s.coords.long != null)
+    .map((s) => ({
+      id:         s.id,
+      name:       s.name,
+      city:       s.city,
+      country:    s.country,
+      lat:        s.coords.lat,
+      lng:        s.coords.long,
+      capacity:   s.capacity,
+      elevationM: s.elevationM ?? null,
+      matchCount: yearsActive
+        ? (matchCountByStadium.get(s.id) ?? 0)
+        : s.tournaments.length,
+    }));
+
   return (
     <>
       {/* Hero */}
@@ -102,10 +157,15 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
             <span className="text-brand-400">1930 → 2026.</span>
           </h1>
           <p className="text-ink-300 text-sm mt-2 max-w-2xl">
-            {stadiums.length} stadiums across {hostCountries} host nations. Capacity, altitude,
-            opening year, tournament appearances. Click any row to query the underlying API
+            {yearsActive
+              ? `${stadiums.length} venue${stadiums.length === 1 ? '' : 's'} across ${hostCountries} host nation${hostCountries === 1 ? '' : 's'} for the selected year${requestedYears.length === 1 ? '' : 's'}.`
+              : `${allStadiums.length} stadiums across ${new Set(allStadiums.map((s) => s.country)).size} host nations.`}
+            {' '}Capacity, altitude, opening year, tournament appearances. Click any row to query the underlying API
             (<span className="font-mono text-brand-400">GET /stadiums/&lbrace;id&rbrace;</span>).
           </p>
+
+          <YearPicker years={requestedYears} allYears={playedYears} />
+
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-8">
             <Stat label="Stadiums" value={stadiums.length.toLocaleString()} />
             <Stat label="Host countries" value={hostCountries.toString()} />
@@ -120,6 +180,29 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
               hint={newest?.name}
             />
           </div>
+        </div>
+      </section>
+
+      {/* Map */}
+      <section className="max-w-7xl mx-auto px-6 py-8">
+        <div className="bg-ink-900 border border-ink-800 rounded-2xl p-5">
+          <div className="flex items-baseline justify-between mb-4 flex-wrap gap-2">
+            <div>
+              <h2 className="text-sm font-bold text-white">
+                Stadium map
+              </h2>
+              <div className="text-[11px] text-ink-300">
+                {yearsActive
+                  ? `Venues used in ${requestedYears.join(', ')} — marker size + color scales with match count`
+                  : 'All venues — marker size + color scales with WC-edition count'}
+                {' · click any marker for details'}
+              </div>
+            </div>
+            <span className="text-[11px] font-mono text-ink-500">
+              {mapPoints.length} venue{mapPoints.length === 1 ? '' : 's'}
+            </span>
+          </div>
+          <StadiumMap points={mapPoints} height={460} />
         </div>
       </section>
 
@@ -313,6 +396,50 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
       <div className="text-2xl sm:text-3xl font-black text-white">{value}</div>
       <div className="text-[10px] uppercase tracking-widest text-ink-300 mt-1">{label}</div>
       {hint && <div className="text-[10px] text-ink-500 mt-0.5 truncate" title={hint}>{hint}</div>}
+    </div>
+  );
+}
+
+/**
+ * Year picker — same shape as the Players page. Empty selection
+ * means "all years"; clicking adds, clicking again removes. The
+ * URL stays clean when nothing's selected (no ?years= param at
+ * all) so the canonical URL for "all stadiums" is just /stadiums/.
+ */
+function YearPicker({ years, allYears }: { years: number[]; allYears: number[] }) {
+  const isActive = (y: number) => years.includes(y);
+  function urlWith(y: number) {
+    const next = isActive(y) ? years.filter((v) => v !== y) : [...years, y].sort();
+    if (next.length === 0) return '/stadiums/';
+    return `/stadiums/?years=${next.join(',')}`;
+  }
+  return (
+    <div className="mt-6">
+      <div className="flex items-baseline justify-between mb-2">
+        <div className="text-[10px] uppercase tracking-widest text-ink-300">
+          Tournament — click to filter ({years.length === 0 ? 'showing all years' : `${years.length} selected`})
+        </div>
+        {years.length > 0 && (
+          <Link href="/stadiums/" className="text-[11px] text-brand-400 hover:underline">
+            Clear
+          </Link>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {allYears.map((y) => (
+          <Link
+            key={y}
+            href={urlWith(y)}
+            className={`px-2.5 py-1 rounded text-[11px] font-mono ${
+              isActive(y)
+                ? 'bg-brand-600/30 border border-brand-500 text-brand-200'
+                : 'bg-ink-800 border border-ink-700 text-ink-400 hover:text-ink-100'
+            }`}
+          >
+            {y}
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }

@@ -22,6 +22,7 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import { listTournaments, getAggregatePlayers } from '@/lib/wc-api';
 import { Donut, SERIES_COLORS, BarSeries } from '@/components/charts/Charts';
+import { Flag } from '@/components/Flag';
 
 export const dynamic = 'force-dynamic';
 
@@ -103,13 +104,19 @@ export default async function PlayersAnalysisPage({ searchParams }: PageProps) {
   const tournaments = await listTournaments();
   const playedYears = tournaments.filter((t) => t.champion).map((t) => t.year);
 
-  // Default: most recent tournament. Multi-select via ?years=a,b,c.
+  // Default: ALL years. The user explicitly asked for this — toggling
+  // years on the picker narrows the window; clearing the selection
+  // (or visiting without ?years=) shows all-time. The previous default
+  // ("last played tournament only") was confusing because the chip
+  // showed one year highlighted while the API only had data for that
+  // one year. Now default = no selection = all years, picker chips
+  // are click-to-include.
   const requested = sp.years
     ? sp.years.split(',').map((y) => Number(y.trim())).filter((y) => playedYears.includes(y))
     : [];
-  const years = requested.length > 0 ? requested : [playedYears[playedYears.length - 1]];
-
-  const agg = await getAggregatePlayers(years);
+  const years = requested;       // empty = "all years" to the picker UI
+  const yearsForFetch = requested.length > 0 ? requested : undefined;
+  const agg = await getAggregatePlayers(yearsForFetch);
 
   // Derived: total players, position split, top confederation,
   // hemisphere breakdown.
@@ -169,8 +176,8 @@ export default async function PlayersAnalysisPage({ searchParams }: PageProps) {
             <Stat label="Avg squad size" value={(agg.avgSquadSize ?? 0).toFixed(1)} />
             <Stat
               label="Tournaments"
-              value={(agg.totalTournaments ?? years.length).toString()}
-              hint={years.join(', ')}
+              value={(agg.totalTournaments ?? playedYears.length).toString()}
+              hint={years.length === 0 ? 'all years' : years.join(', ')}
             />
           </div>
         </div>
@@ -181,7 +188,7 @@ export default async function PlayersAnalysisPage({ searchParams }: PageProps) {
         <ChartCard
           title="Squads by position"
           subtitle="Players in the selected window, split by role"
-          source={`GET /aggregates/players?years=${years.join(',')}`}
+          source={years.length === 0 ? 'GET /aggregates/players' : `GET /aggregates/players?years=${years.join(',')}`}
         >
           <Donut data={positionDonut} centerLabel={String(totalPlayers)} height={320} />
         </ChartCard>
@@ -189,7 +196,7 @@ export default async function PlayersAnalysisPage({ searchParams }: PageProps) {
         <ChartCard
           title="By confederation"
           subtitle="Where the players come from"
-          source={`GET /aggregates/players?years=${years.join(',')}`}
+          source={years.length === 0 ? 'GET /aggregates/players' : `GET /aggregates/players?years=${years.join(',')}`}
         >
           <Donut
             data={confederationDonut}
@@ -280,7 +287,12 @@ export default async function PlayersAnalysisPage({ searchParams }: PageProps) {
                 const month = Number(g.dob.slice(5, 7));
                 return (
                   <tr key={g.name} className="border-t border-ink-800/60 hover:bg-ink-800/30">
-                    <td className="px-4 py-2.5 font-semibold text-white">{g.name}</td>
+                    <td className="px-4 py-2.5 font-semibold text-white">
+                      <span className="inline-flex items-center gap-2">
+                        <Flag country={g.team} />
+                        <span>{g.name}</span>
+                      </span>
+                    </td>
                     <td className="px-4 py-2.5 text-ink-200">{g.team}</td>
                     <td className="px-4 py-2.5">
                       <span

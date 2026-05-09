@@ -41,7 +41,12 @@ interface TeamRecord {
   firstYear:      number;
   lastYear:       number;
   bestFinish:     number | null;
-  bestFinishYear: number | null;
+  /** Every year the team reached its best-ever final position. For
+   *  Brazil that's 1958/1962/1970/1994/2002 (5× champions); for
+   *  Germany it's 1954/1974/1990/2014. Listing only one year would
+   *  understate dynasties — the user called this out and they were
+   *  right. */
+  bestFinishYears: number[];
 }
 
 export default async function TeamsPage() {
@@ -60,14 +65,14 @@ export default async function TeamsPage() {
       let rec = byTeam.get(team.name);
       if (!rec) {
         rec = {
-          name:           team.name,
-          iso:            team.iso,
-          confederation:  team.confederation,
-          appearances:    [],
-          firstYear:      Infinity,
-          lastYear:       -Infinity,
-          bestFinish:     null,
-          bestFinishYear: null,
+          name:            team.name,
+          iso:             team.iso,
+          confederation:   team.confederation,
+          appearances:     [],
+          firstYear:       Infinity,
+          lastYear:        -Infinity,
+          bestFinish:      null,
+          bestFinishYears: [],
         };
         byTeam.set(team.name, rec);
       }
@@ -75,15 +80,25 @@ export default async function TeamsPage() {
       rec.firstYear = Math.min(rec.firstYear, t.tournament.year);
       rec.lastYear  = Math.max(rec.lastYear,  t.tournament.year);
       const fp = team.finalPosition;
-      if (fp != null && (rec.bestFinish == null || fp < rec.bestFinish)) {
-        rec.bestFinish     = fp;
-        rec.bestFinishYear = t.tournament.year;
+      if (fp != null) {
+        if (rec.bestFinish == null || fp < rec.bestFinish) {
+          // New best finish — reset the year list to just this one.
+          rec.bestFinish      = fp;
+          rec.bestFinishYears = [t.tournament.year];
+        } else if (fp === rec.bestFinish) {
+          // Tied for best — append this year. Brazil/Germany champions
+          // accumulate multiple entries here.
+          rec.bestFinishYears.push(t.tournament.year);
+        }
       }
     }
   }
 
-  // Sort the most-recent year per team's appearances list.
-  for (const rec of byTeam.values()) rec.appearances.sort((a, b) => a - b);
+  // Sort years lists for stable display.
+  for (const rec of byTeam.values()) {
+    rec.appearances.sort((a, b) => a - b);
+    rec.bestFinishYears.sort((a, b) => a - b);
+  }
 
   const allTeams = Array.from(byTeam.values());
   const totalAppearances = allTeams.reduce((s, t) => s + t.appearances.length, 0);
@@ -208,8 +223,13 @@ export default async function TeamsPage() {
                   <div className="text-right">
                     <div className="text-sm font-bold text-accent-gold font-mono tabular-nums">
                       #{t.bestFinish}
+                      {t.bestFinishYears.length > 1 && (
+                        <span className="text-ink-400 font-normal text-xs ml-1">×{t.bestFinishYears.length}</span>
+                      )}
                     </div>
-                    <div className="text-[10px] text-ink-500">in {t.bestFinishYear}</div>
+                    <div className="text-[10px] text-ink-500 font-mono">
+                      {t.bestFinishYears.join(', ')}
+                    </div>
                   </div>
                 </div>
               </li>
@@ -272,7 +292,10 @@ export default async function TeamsPage() {
                     <td className="px-4 py-2.5 text-right tabular-nums text-ink-300 text-xs">{t.lastYear}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-xs">
                       {t.bestFinish != null
-                        ? <span className="text-accent-gold">#{t.bestFinish} <span className="text-ink-500">({t.bestFinishYear})</span></span>
+                        ? <span className="text-accent-gold">
+                            #{t.bestFinish}{t.bestFinishYears.length > 1 ? ` ×${t.bestFinishYears.length}` : ''}{' '}
+                            <span className="text-ink-500 text-[10px]">({t.bestFinishYears.join(', ')})</span>
+                          </span>
                         : <span className="text-ink-500">—</span>}
                     </td>
                   </tr>
