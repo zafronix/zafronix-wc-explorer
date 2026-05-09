@@ -22,7 +22,9 @@ export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'Compare World Cups side-by-side',
-  description: 'Pick any 2+ FIFA World Cup tournaments and see them charted side-by-side: total goals, goals per match, attendance, top scorers, champions.',
+  description: 'Pick any 2+ FIFA World Cup tournaments and see them charted side-by-side: total goals, goals per match, attendance, top scorers, champions. Spans 1930 to 2026.',
+  keywords: ['compare world cups', 'world cup statistics comparison', 'world cup goals per tournament', 'fifa world cup data compare'],
+  alternates: { canonical: '/wc-explorer/compare/' },
 };
 
 export default async function ComparePage({

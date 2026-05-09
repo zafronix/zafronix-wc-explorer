@@ -34,6 +34,15 @@ export async function generateMetadata({ params }: { params: Promise<{ year: str
   return {
     title: `${m.year} World Cup — ${m.host.join(' + ')}${m.champion ? ` · ${m.champion} won` : ''}`,
     description: `${m.year} FIFA World Cup in ${m.host.join(' + ')}. Champion: ${m.champion ?? 'TBD'}. ${m.teamsCount ?? '?'} teams · ${m.matchesCount ?? '?'} matches · ${m.totalGoals ?? '?'} goals.`,
+    keywords: [
+      `${m.year} world cup`,
+      `${m.year} fifa world cup`,
+      `${m.year} world cup squad`,
+      `${m.year} world cup results`,
+      ...(m.champion ? [`${m.champion} ${m.year} world cup`] : []),
+      ...m.host.map((h) => `${m.year} world cup ${h.toLowerCase()}`),
+    ],
+    alternates: { canonical: `/wc-explorer/${m.year}/` },
   };
 }
 
@@ -118,8 +127,40 @@ export default async function YearPage({ params }: { params: Promise<{ year: str
   const prev = idx > 0 ? allTournaments[idx - 1] : undefined;
   const next = idx >= 0 && idx < allTournaments.length - 1 ? allTournaments[idx + 1] : undefined;
 
+  // SportsEvent JSON-LD — eligible for Google's rich-result tournament
+  // panels (date, location, winner). The schema models a single event,
+  // which fits a tournament-level page; matches inside the tournament
+  // would be SubEvents but we keep it simple for the rich-result win.
+  const jsonLd = {
+    '@context':    'https://schema.org',
+    '@type':       'SportsEvent',
+    name:          `${meta.year} FIFA World Cup`,
+    sport:         'Association Football',
+    startDate:     meta.datesIso?.start,
+    endDate:       meta.datesIso?.end,
+    description:   `${meta.year} FIFA World Cup hosted by ${meta.host.join(', ')}. ${meta.teamsCount ?? '?'} teams, ${meta.matchesCount ?? '?'} matches, ${meta.totalGoals ?? '?'} total goals.`,
+    eventStatus:   meta.champion ? 'https://schema.org/EventCompleted' : 'https://schema.org/EventScheduled',
+    location:      meta.host.map((country) => ({
+      '@type':           'Country',
+      name:              country,
+    })),
+    organizer: {
+      '@type': 'Organization',
+      name:    'FIFA',
+      url:     'https://www.fifa.com/',
+    },
+    ...(meta.champion ? {
+      winner: { '@type': 'SportsTeam', name: meta.champion },
+    } : {}),
+    url: `https://api.zafronix.com/wc-explorer/${meta.year}/`,
+  };
+
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       {/* Hero */}
       <section className="relative bg-grid border-b border-ink-800">
         <div className="absolute inset-0 bg-gradient-to-b from-brand-700/15 via-ink-950/0 to-ink-950" aria-hidden />

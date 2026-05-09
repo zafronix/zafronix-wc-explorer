@@ -29,8 +29,10 @@ import { groupYearsByDecade, decadeShort } from '@/lib/year-groups';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Players analysis — position, DOB, hemisphere distributions',
-  description: 'World Cup squads charted by position, birth month, confederation, and hemisphere. With a GOAT overlay (Pelé, Maradona, Cruyff, Messi, CR7, R9 …) so you can spot the outliers.',
+  title: 'Players — every World Cup squad, searchable',
+  description: 'Every player from every FIFA World Cup squad, searchable by name, country, position, birth year, and birth month. With a GOAT overlay (Pelé, Maradona, Cruyff, Messi, CR7, R9) and the all-time hat-tricks leaderboard.',
+  keywords: ['world cup players', 'world cup squad search', 'world cup hat tricks', 'fifa world cup goalscorers', 'world cup goat list', 'world cup birth month'],
+  alternates: { canonical: '/wc-explorer/players/' },
 };
 
 interface PageProps {
