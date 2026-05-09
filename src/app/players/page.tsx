@@ -20,9 +20,10 @@
 
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { listTournaments, getAggregatePlayers } from '@/lib/wc-api';
+import { listTournaments, getAggregatePlayers, getTournament } from '@/lib/wc-api';
 import { Donut, SERIES_COLORS, BarSeries } from '@/components/charts/Charts';
 import { Flag } from '@/components/Flag';
+import { PlayersTable, type PlayerRow } from '@/components/PlayersTable';
 
 export const dynamic = 'force-dynamic';
 
@@ -117,6 +118,70 @@ export default async function PlayersAnalysisPage({ searchParams }: PageProps) {
   const years = requested;       // empty = "all years" to the picker UI
   const yearsForFetch = requested.length > 0 ? requested : undefined;
   const agg = await getAggregatePlayers(yearsForFetch);
+
+  // Pull full squads for the visible window (or every played
+  // tournament when no filter is set) so the All Players table can
+  // render every individual player. The wc-api caches per-year for
+  // 24h so the warm path is fast even when fetching all 22 played
+  // WCs in parallel.
+  const yearsToFetch = yearsForFetch ?? playedYears;
+  const tournamentFulls = (await Promise.all(
+    yearsToFetch.map((y) => getTournament(y).catch(() => null)),
+  )).filter((t): t is NonNullable<typeof t> => !!t);
+
+  // Dedupe player rows across tournaments — a player who appears at
+  // multiple WCs becomes a single row with their tournament list +
+  // total goals + (if ever) captain flag. Key is name|team because
+  // a player could (in theory) switch national teams; keeping team
+  // in the key surfaces both rows separately rather than merging.
+  const playerByKey = new Map<string, PlayerRow>();
+  for (const t of tournamentFulls) {
+    for (const team of t.teams ?? []) {
+      for (const sp of team.squad ?? []) {
+        const key = `${sp.name}|${team.name}`;
+        let row = playerByKey.get(key);
+        if (!row) {
+          row = {
+            name:     sp.name,
+            team:     team.name,
+            position: sp.position,
+            dob:      sp.born ?? null,
+            years:    [],
+            goals:    0,
+            captain:  false,
+          };
+          playerByKey.set(key, row);
+        }
+        if (!row.years.includes(t.tournament.year)) row.years.push(t.tournament.year);
+        row.goals  += sp.goals ?? 0;
+        if (sp.captain) row.captain = true;
+      }
+    }
+  }
+  const allPlayers: PlayerRow[] = Array.from(playerByKey.values()).map((r) => ({
+    ...r,
+    years: [...r.years].sort((a, b) => a - b),
+  }));
+  // Sort: most goals first, then most appearances, then name.
+  allPlayers.sort((a, b) =>
+    b.goals - a.goals
+    || b.years.length - a.years.length
+    || a.name.localeCompare(b.name),
+  );
+
+  // Convert the curated GOATS list into the same row shape so it can
+  // share the table component. We don't have per-tournament participation
+  // for GOATs at this layer, so years[] is left empty (the column reads
+  // as 0 — acceptable since this table is reference-only).
+  const goatRows: PlayerRow[] = GOATS.map((g) => ({
+    name:     g.name,
+    team:     g.team,
+    position: g.pos,
+    dob:      g.dob,
+    years:    [],
+    goals:    0,
+    captain:  false,
+  }));
 
   // Derived: total players, position split, top confederation,
   // hemisphere breakdown.
@@ -264,54 +329,31 @@ export default async function PlayersAnalysisPage({ searchParams }: PageProps) {
         </div>
       </section>
 
-      {/* GOAT reference table */}
+      {/* All players — full filterable / searchable roster from every
+          fetched tournament. Filters: name search, country, position,
+          birth year, birth month. Caps at 100 rows by default with a
+          "show all" expand. */}
+      <section className="max-w-7xl mx-auto px-6 pb-8">
+        <h2 className="text-2xl font-bold mb-2">All players</h2>
+        <p className="text-xs text-ink-500 mb-4">
+          Every player from {years.length === 0 ? 'all played World Cups' : `the ${years.join(', ')} squad${years.length === 1 ? '' : 's'}`}.
+          Search by name or filter by country, position, birth year or birth month. The C badge
+          marks captains.
+        </p>
+        <PlayersTable players={allPlayers} noun="players" pageSize={100} />
+      </section>
+
+      {/* GOAT reference — same table, filtered to the curated list.
+          Shares the search + filter UX so an operator can ask "which
+          GOATs were born in October?" or "which Brazilians made the
+          list?" without scrolling. */}
       <section className="max-w-7xl mx-auto px-6 pb-12">
-        <h2 className="text-2xl font-bold mb-4">GOAT reference</h2>
+        <h2 className="text-2xl font-bold mb-2">GOAT reference</h2>
         <p className="text-xs text-ink-500 mb-4">
           Curated. Inclusion in this list isn&apos;t a championship ranking — it&apos;s a span of Ballon-d&apos;Or
           winners + nominees + commonly-cited GOATs across eras, used for the overlay above.
         </p>
-        <div className="bg-ink-900 border border-ink-800 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-ink-800/60 text-left text-[10px] uppercase tracking-widest text-ink-300">
-              <tr>
-                <th className="px-4 py-3">Player</th>
-                <th className="px-4 py-3">Country</th>
-                <th className="px-4 py-3">Position</th>
-                <th className="px-4 py-3">DOB</th>
-                <th className="px-4 py-3">Birth month</th>
-              </tr>
-            </thead>
-            <tbody>
-              {GOATS.map((g) => {
-                const month = Number(g.dob.slice(5, 7));
-                return (
-                  <tr key={g.name} className="border-t border-ink-800/60 hover:bg-ink-800/30">
-                    <td className="px-4 py-2.5 font-semibold text-white">
-                      <span className="inline-flex items-center gap-2">
-                        <Flag country={g.team} />
-                        <span>{g.name}</span>
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 text-ink-200">{g.team}</td>
-                    <td className="px-4 py-2.5">
-                      <span
-                        className="inline-block px-2 py-0.5 rounded text-[10px] font-bold"
-                        style={{ backgroundColor: `${POSITION_COLORS[g.pos]}33`, color: POSITION_COLORS[g.pos] }}
-                      >
-                        {POSITION_LABELS[g.pos]}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-ink-300">{g.dob}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs">
-                      <span className="text-accent-gold">{MONTH_LABELS[month - 1]}</span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <PlayersTable players={goatRows} noun="GOATs" pageSize={50} />
       </section>
 
       {/* Hat-tricks leaderboard — every 3+ goal individual performance
