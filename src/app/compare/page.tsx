@@ -11,7 +11,7 @@
 
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { compareTournaments, listTournaments } from '@/lib/wc-api';
+import { compareTournaments, listTournaments, getTournament } from '@/lib/wc-api';
 import {
   BarSeries, SERIES_COLORS, PALETTE,
 } from '@/components/charts/Charts';
@@ -47,6 +47,23 @@ export default async function ComparePage({
   // Server may return rows in any order; pin to the user's request order
   // for chart stability.
   rows.sort((a, b) => years.indexOf(a.year) - years.indexOf(b.year));
+
+  // Build a player-name → team-name index across the selected
+  // tournaments so the Top Scorer and Best Player cells in the
+  // breakdown table can render with a flag. /compare gives us names
+  // only; we resolve teams by walking each year's full squad.
+  // Cached per-year at the API, so this is a warm round-trip.
+  const fulls = await Promise.all(years.map((y) => getTournament(y).catch(() => null)));
+  const playerTeam = new Map<string, string>();
+  for (const t of fulls) {
+    if (!t || !t.teams) continue;
+    for (const team of t.teams) {
+      for (const p of team.squad ?? []) {
+        if (!playerTeam.has(p.name)) playerTeam.set(p.name, team.name);
+        if (p.fullName && !playerTeam.has(p.fullName)) playerTeam.set(p.fullName, team.name);
+      }
+    }
+  }
 
   // Chart data — every point carries host(s) so tooltips render
   // <flag> Country alongside the year + value.
@@ -141,7 +158,10 @@ export default async function ComparePage({
                   {p.bestPlayer && (
                     <div className="mt-4 pt-3 border-t border-ink-800 text-[11px]">
                       <span className="text-ink-300">Best player: </span>
-                      <span className="text-white font-semibold">{p.bestPlayer}</span>
+                      <span className="text-white font-semibold inline-flex items-center gap-1.5 align-middle">
+                        {playerTeam.get(p.bestPlayer) && <Flag country={playerTeam.get(p.bestPlayer)} />}
+                        <span>{p.bestPlayer}</span>
+                      </span>
                     </div>
                   )}
                 </div>
@@ -221,8 +241,16 @@ export default async function ComparePage({
                   <Row label="Matches"           rows={rows} get={(r) => String(r.matchesCount)} numeric />
                   <Row label="Total goals"       rows={rows} get={(r) => r.totalGoals != null ? String(r.totalGoals) : '—'} numeric />
                   <Row label="Goals / match"     rows={rows} get={(r) => r.goalsPerMatch != null ? r.goalsPerMatch.toFixed(2) : '—'} numeric />
-                  <Row label="Top scorer"        rows={rows} get={(r) => r.topScorer ? `${r.topScorer.player} (${r.topScorer.goals})` : '—'} />
-                  <Row label="Best player"       rows={rows} get={(r) => r.bestPlayer ?? '—'} />
+                  <Row label="Top scorer"        rows={rows} getNode={(r) =>
+                    r.topScorer
+                      ? <PlayerCell name={r.topScorer.player} suffix={` (${r.topScorer.goals})`} team={playerTeam.get(r.topScorer.player)} />
+                      : <span className="text-ink-500">—</span>}
+                  />
+                  <Row label="Best player"       rows={rows} getNode={(r) =>
+                    r.bestPlayer
+                      ? <PlayerCell name={r.bestPlayer} team={playerTeam.get(r.bestPlayer)} />
+                      : <span className="text-ink-500">—</span>}
+                  />
                   <Row label="Total attendance"  rows={rows} get={(r) => r.totalAttendance != null ? r.totalAttendance.toLocaleString() : '—'} numeric />
                   <Row label="Avg attendance"    rows={rows} get={(r) => r.avgAttendance != null ? r.avgAttendance.toLocaleString() : '—'} numeric />
                 </tbody>
@@ -307,6 +335,21 @@ function CountryCell({ name }: { name: string | null }) {
     <span className="inline-flex items-center gap-1.5">
       <Flag country={name} />
       <span>{name}</span>
+    </span>
+  );
+}
+
+/**
+ * Player cell with the team flag on the left. The `team` is resolved
+ * upstream by walking the tournament's squads — when the lookup
+ * misses (rare; player named under a non-canonical form) we still
+ * render the name without a flag so the row stays informative.
+ */
+function PlayerCell({ name, team, suffix }: { name: string; team?: string; suffix?: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {team && <Flag country={team} />}
+      <span>{name}{suffix ?? ''}</span>
     </span>
   );
 }

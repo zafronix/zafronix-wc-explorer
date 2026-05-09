@@ -43,14 +43,19 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
     listStadiums(),
     listTournaments(),
   ]);
+  // Stadium picker includes EVERY tournament year — 2026 schedule
+  // is on file even before kickoff, so filtering to it returns the
+  // pre-allocated venues. Players uses `playedYears` (champion-set)
+  // because aggregate-player stats only exist for played editions.
   const playedYears = tournaments.filter((t) => t.champion).map((t) => t.year);
+  const allYearsForPicker = tournaments.map((t) => t.year);
 
   // Year picker — same semantics as the Players page. Empty = all years.
   // When years are selected, narrow stadiums to those whose tournaments[]
   // intersects the selection. The match-count overlay also re-aggregates
   // to just the selected years.
   const requestedYears = sp.years
-    ? sp.years.split(',').map((y) => Number(y.trim())).filter((y) => playedYears.includes(y))
+    ? sp.years.split(',').map((y) => Number(y.trim())).filter((y) => allYearsForPicker.includes(y))
     : [];
   const yearsActive = requestedYears.length > 0;
   const yearsSet = new Set(requestedYears);
@@ -59,12 +64,14 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
     ? allStadiums.filter((s) => s.tournaments.some((y) => yearsSet.has(y)))
     : allStadiums;
 
-  // Per-stadium match counts. We always fetch ALL years so the
-  // most-used-venues leaderboard can show "1970 (2), 1986 (3), 2026
-  // (3)" — i.e. match counts per tournament — not just tournament
-  // count. With per-year caching at the API, 24 parallel fetches
-  // are warm in milliseconds.
-  const yearsToFetch = yearsActive ? requestedYears : playedYears;
+  // Per-stadium match counts. We fetch ALL tournament years —
+  // including the upcoming/in-progress 2026, whose matches are
+  // already on the schedule even before they're played. So
+  // "Estadio Azteca · 1970 (2), 1986 (3), 2026 (3)" works at any
+  // point in the WC cycle. With per-year caching at the API, 24+
+  // parallel fetches are warm in milliseconds.
+  const allTournamentYears = tournaments.map((t) => t.year);
+  const yearsToFetch = yearsActive ? requestedYears : allTournamentYears;
   const matchListsByYear = new Map<number, Awaited<ReturnType<typeof listMatchesByYear>>>();
   await Promise.all(
     yearsToFetch.map(async (y) => {
@@ -182,7 +189,7 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
             (<span className="font-mono text-brand-400">GET /stadiums/&lbrace;id&rbrace;</span>).
           </p>
 
-          <YearPicker years={requestedYears} allYears={playedYears} />
+          <YearPicker years={requestedYears} allYears={allYearsForPicker} />
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-8">
             <Stat label="Stadiums" value={stadiums.length.toLocaleString()} />
