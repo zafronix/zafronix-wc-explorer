@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import Script from 'next/script';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -19,6 +20,12 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // Same domain-restricted Google Maps key the admin + siono use.
+  // Restricted via Google Cloud to *.zafronix.com + *.siono.app, so
+  // embedding in the client bundle is fine. Override via the env var
+  // for dev or future rotation.
+  const mapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+    ?? 'AIzaSyDY_rR_MRbvbIZHG7_07GMXqDa97VTE0VM';
   return (
     <html lang="en" className="dark">
       <body className="min-h-screen flex flex-col">
@@ -39,6 +46,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 </Link>
                 <Link href="/compare/" className="text-ink-300 hover:text-ink-100 transition-colors">
                   Compare
+                </Link>
+                <Link href="/teams/" className="text-ink-300 hover:text-ink-100 transition-colors">
+                  Teams
+                </Link>
+                <Link href="/players/" className="text-ink-300 hover:text-ink-100 transition-colors">
+                  Players
+                </Link>
+                <Link href="/stadiums/" className="text-ink-300 hover:text-ink-100 transition-colors">
+                  Stadiums
                 </Link>
                 <a
                   href="https://api.zafronix.com/docs"
@@ -79,6 +95,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
           </div>
         </footer>
+
+        {mapsKey && (
+          <Script
+            src={`https://maps.googleapis.com/maps/api/js?key=${mapsKey}&loading=async`}
+            strategy="afterInteractive"
+          />
+        )}
       </body>
     </html>
   );

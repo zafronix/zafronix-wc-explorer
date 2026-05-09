@@ -18,9 +18,11 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import {
   getTournament, listTournaments, topScorersForYear, getTriviaForYear,
+  listMatchesByYear, listStadiums,
 } from '@/lib/wc-api';
 import { BarSeries, Donut, SERIES_COLORS } from '@/components/charts/Charts';
 import { Flag } from '@/components/Flag';
+import { StadiumMap, type StadiumMapPoint } from '@/components/StadiumMap';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,13 +40,45 @@ export async function generateMetadata({ params }: { params: Promise<{ year: str
 export default async function YearPage({ params }: { params: Promise<{ year: string }> }) {
   const { year } = await params;
   const yearNum = Number(year);
-  const [t, allTournaments, topScorers, trivia] = await Promise.all([
+  const [t, allTournaments, topScorers, trivia, matches, allStadiums] = await Promise.all([
     getTournament(yearNum),
     listTournaments(),
     topScorersForYear(yearNum, 12),
     getTriviaForYear(yearNum).catch(() => []),
+    // Best-effort — older tournaments may not have full match data;
+    // an empty list just hides the map.
+    listMatchesByYear(yearNum).catch(() => []),
+    listStadiums().catch(() => []),
   ]);
   if (!t) notFound();
+
+  // Build stadium-map points: every venue used in this tournament,
+  // joined with the global stadium index (for capacity/elevation/
+  // coords) + per-stadium match counts derived from the match list.
+  const stadiumIndex = new Map(allStadiums.map((s) => [s.id, s]));
+  const matchesByStadium = new Map<string, number>();
+  for (const m of matches) {
+    if (!m.stadiumId) continue;
+    matchesByStadium.set(m.stadiumId, (matchesByStadium.get(m.stadiumId) ?? 0) + 1);
+  }
+  const stadiumPoints: StadiumMapPoint[] = Array.from(matchesByStadium.entries())
+    .map(([id, count]) => {
+      const s = stadiumIndex.get(id);
+      if (!s || !s.coords) return null;
+      return {
+        id:         s.id,
+        name:       s.name,
+        city:       s.city,
+        country:    s.country,
+        lat:        s.coords.lat,
+        lng:        s.coords.long,
+        capacity:   s.capacity,
+        elevationM: s.elevationM ?? null,
+        matchCount: count,
+      };
+    })
+    .filter((p): p is StadiumMapPoint => p !== null)
+    .sort((a, b) => b.matchCount - a.matchCount);
 
   const meta = t.tournament;
   const teams = t.teams ?? [];
@@ -166,6 +200,54 @@ export default async function YearPage({ params }: { params: Promise<{ year: str
           <div className="bg-ink-900 border border-ink-800 rounded-2xl p-5">
             <h2 className="text-sm uppercase tracking-widest text-ink-300 mb-3">Notes</h2>
             <p className="text-sm text-ink-100 leading-relaxed">{meta.notes}</p>
+          </div>
+        </section>
+      )}
+
+      {/* Stadium map — interactive Google Maps with all venues used
+          in this tournament. Marker color/size scales with capacity;
+          info window shows match count + elevation. Hidden when the
+          match list is empty (rare — older tournaments without per-
+          match stadium data). */}
+      {stadiumPoints.length > 0 && (
+        <section className="max-w-7xl mx-auto px-6 pb-6">
+          <div className="bg-ink-900 border border-ink-800 rounded-2xl p-5">
+            <div className="flex items-baseline justify-between mb-4 flex-wrap gap-2">
+              <div>
+                <h2 className="text-sm font-bold text-white">Stadiums &amp; venues</h2>
+                <div className="text-[11px] text-ink-300">
+                  {stadiumPoints.length} venue{stadiumPoints.length === 1 ? '' : 's'} ·{' '}
+                  {stadiumPoints.reduce((s, p) => s + p.matchCount, 0)} match{stadiumPoints.reduce((s, p) => s + p.matchCount, 0) === 1 ? '' : 'es'} ·{' '}
+                  click any marker for details
+                </div>
+              </div>
+              <Link href="/stadiums/" className="text-xs text-brand-400 hover:underline">
+                All stadiums →
+              </Link>
+            </div>
+            <StadiumMap points={stadiumPoints} height={420} />
+            {/* Compact list under the map for accessibility + quick scan. */}
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs">
+              {stadiumPoints.map((p) => (
+                <div key={p.id} className="px-3 py-2 bg-ink-950/40 border border-ink-800 rounded-lg flex items-center gap-2">
+                  <Flag country={p.country} />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-white truncate">{p.name}</div>
+                    <div className="text-[10px] text-ink-500 truncate">{p.city}</div>
+                  </div>
+                  <div className="text-right text-[10px] text-ink-300 font-mono tabular-nums">
+                    <div>{p.matchCount} match{p.matchCount === 1 ? '' : 'es'}</div>
+                    {p.capacity != null && <div className="text-ink-500">{p.capacity.toLocaleString()} cap</div>}
+                    {p.elevationM != null && p.elevationM > 1000 && (
+                      <div className="text-accent-gold/80">{p.elevationM.toLocaleString()}m alt</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 pt-3 border-t border-ink-800/60 text-[10px] font-mono text-ink-500">
+              GET /matches?year={meta.year} · GET /stadiums
+            </div>
           </div>
         </section>
       )}

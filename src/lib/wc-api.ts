@@ -141,9 +141,19 @@ export interface ApiAggregateChampions {
 }
 
 export interface ApiAggregatePlayers {
-  positionCounts?: Record<string, number>;
-  birthMonthsByPosition?: Record<string, Record<string, { N: number; S: number }>>;
-  confederationCounts?: Record<string, number>;
+  years?:                number[];
+  totalPlayers?:         number;
+  totalTeams?:           number;
+  totalTournaments?:     number;
+  avgSquadSize?:         number;
+  /** Position counts: keys are GK | DF | MF | FW. */
+  byPosition?:           Record<string, number>;
+  /** birthMonthByPosition[GK] = [Jan…Dec] counts. */
+  birthMonthByPosition?: Record<string, number[]>;
+  /** Per-confederation player counts. */
+  byConfederation?:      Record<string, number>;
+  /** Northern / Southern hemisphere split. */
+  byHemisphere?:         { N: number; S: number };
 }
 
 // ============================================================================
@@ -199,6 +209,88 @@ export async function getAggregatePlayers(years?: number[]): Promise<ApiAggregat
     revalidate: REVALIDATE.static,
     tags: ['wc:aggregates:players'],
   });
+}
+
+// ─── Matches ─────────────────────────────────────────────────────────
+
+export interface ApiMatch {
+  id:           string;
+  matchNo?:     number;
+  date:         string;
+  kickoff:      string | null;
+  kickoffUtc?:  string;
+  stage:        string;
+  homeTeam:     string | null;
+  awayTeam:     string | null;
+  homeScore:    number | null;
+  awayScore:    number | null;
+  result:       string | null;
+  extraTime:    boolean;
+  penalties:    { home: number; away: number } | null;
+  stadium:      string | null;
+  stadiumId:    string | null;
+  city:         string | null;
+  country?:     string;
+  attendance:   number | null;
+}
+
+interface MatchesListResponse {
+  count?:      number;
+  data?:       ApiMatch[];
+  matches?:    ApiMatch[];
+}
+
+export async function listMatchesByYear(year: number): Promise<ApiMatch[]> {
+  const res = await apiGet<MatchesListResponse>(`/matches?year=${year}`, {
+    revalidate: REVALIDATE.static,
+    tags: [`wc:matches:${year}`],
+  });
+  return res.data ?? res.matches ?? [];
+}
+
+// ─── Stadiums ────────────────────────────────────────────────────────
+
+export interface ApiStadium {
+  id:               string;
+  name:             string;
+  historicalName?:  string;
+  fifaNames?:       Record<string, string>;
+  city:             string;
+  country:          string;
+  iso:              string;
+  coords:           { lat: number; long: number };
+  capacity:         number | null;
+  opened:           number | null;
+  demolished:       number | null;
+  /** Ground elevation in meters above sea level. Optional — added
+   *  via scripts/enrich-elevation.mjs in the wc-api repo; old or
+   *  newly-added rows may not have it yet. */
+  elevationM?:      number | null;
+  tournaments:      number[];
+  isOpenAir:        boolean;
+  notes?:           string;
+}
+
+interface StadiumsListResponse { count: number; data: ApiStadium[] }
+
+export async function listStadiums(): Promise<ApiStadium[]> {
+  const res = await apiGet<StadiumsListResponse>('/stadiums', {
+    revalidate: REVALIDATE.static,
+    tags: ['wc:stadiums'],
+  });
+  return res.data;
+}
+
+export async function getStadium(id: string): Promise<ApiStadium | null> {
+  try {
+    return await apiGet<ApiStadium>(`/stadiums/${id}`, {
+      revalidate: REVALIDATE.static,
+      tags: [`wc:stadium:${id}`],
+    });
+  } catch (e) {
+    if (String(e).includes(' 404 ')) return null;
+    throw e;
+  }
 }
 
 export async function topScorersForYear(

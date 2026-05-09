@@ -1,0 +1,342 @@
+/**
+ * Stadiums view — every WC venue 1930→2026.
+ *
+ * URL: /wc-explorer/stadiums/
+ *
+ * Sections:
+ *   - Hero: total count, host countries, oldest/newest, total capacity
+ *   - Highest-altitude leaderboard (the Mexico City advantage)
+ *   - Most-used venues (Maracanã, Azteca, Wembley, etc.)
+ *   - Capacity over time scatter (does WC stadium size grow with eras?)
+ *   - Stadiums by host country donut
+ *   - Big table with every venue, sortable client-side via the URL
+ *
+ * The choropleth-style world map is intentionally not in this view —
+ * a per-country count is in the donut, and per-stadium points would
+ * cluster too tightly to read at world scale. The Teams view will
+ * have a per-team distance-traveled map that uses the same coords.
+ */
+
+import Link from 'next/link';
+import type { Metadata } from 'next';
+import { listStadiums, type ApiStadium } from '@/lib/wc-api';
+import { Flag } from '@/components/Flag';
+import { BarSeries, Donut, SERIES_COLORS } from '@/components/charts/Charts';
+
+export const dynamic = 'force-dynamic';
+
+export const metadata: Metadata = {
+  title: 'Stadiums — every World Cup venue 1930→2026',
+  description: '206 venues that have hosted FIFA World Cup matches, with capacity, altitude, host country, and tournament appearances.',
+};
+
+interface PageProps {
+  searchParams: Promise<{ sort?: string }>;
+}
+
+export default async function StadiumsPage({ searchParams }: PageProps) {
+  const sp = await searchParams;
+  const sort = sp.sort ?? 'tournaments';
+
+  const stadiums = await listStadiums();
+
+  // ─── Aggregates ──────────────────────────────────────────────────
+  const totalCapacity = stadiums.reduce((s, x) => s + (x.capacity ?? 0), 0);
+  const hostCountries = new Set(stadiums.map((s) => s.country)).size;
+  const oldest = [...stadiums]
+    .filter((s) => s.opened != null)
+    .sort((a, b) => (a.opened ?? 0) - (b.opened ?? 0))[0];
+  const newest = [...stadiums]
+    .filter((s) => s.opened != null)
+    .sort((a, b) => (b.opened ?? 0) - (a.opened ?? 0))[0];
+
+  // Highest altitude — Mexico City + Toluca dominate.
+  const highest = [...stadiums]
+    .filter((s) => typeof s.elevationM === 'number' && (s.elevationM ?? 0) > 0)
+    .sort((a, b) => (b.elevationM ?? 0) - (a.elevationM ?? 0))
+    .slice(0, 10);
+
+  // Most-used (tournaments[] length).
+  const mostUsed = [...stadiums]
+    .filter((s) => s.tournaments.length > 1)
+    .sort((a, b) => b.tournaments.length - a.tournaments.length || (b.capacity ?? 0) - (a.capacity ?? 0))
+    .slice(0, 10);
+
+  // Stadiums by host country — donut.
+  const byCountry = new Map<string, number>();
+  for (const s of stadiums) byCountry.set(s.country, (byCountry.get(s.country) ?? 0) + 1);
+  const countryDonut = Array.from(byCountry.entries())
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value);
+
+  // Capacity-over-time chart — bucket by decade of opening, average
+  // capacity. Only stadiums with a known opening year + capacity.
+  const decadeBuckets = new Map<number, number[]>();
+  for (const s of stadiums) {
+    if (s.opened == null || s.capacity == null) continue;
+    const decade = Math.floor(s.opened / 10) * 10;
+    const arr = decadeBuckets.get(decade) ?? [];
+    arr.push(s.capacity);
+    decadeBuckets.set(decade, arr);
+  }
+  const capacityByDecade = Array.from(decadeBuckets.entries())
+    .map(([decade, caps]) => ({
+      label: `${decade}s`,
+      value: Math.round(caps.reduce((a, b) => a + b, 0) / caps.length),
+    }))
+    .sort((a, b) => Number(a.label.slice(0, -1)) - Number(b.label.slice(0, -1)));
+
+  // Sortable table.
+  const sorted = sortStadiums(stadiums, sort);
+
+  return (
+    <>
+      {/* Hero */}
+      <section className="border-b border-ink-800 bg-grid">
+        <div className="max-w-7xl mx-auto px-6 py-10 sm:py-12">
+          <div className="text-xs mb-4">
+            <Link href="/" className="text-brand-400 hover:underline">← Overview</Link>
+          </div>
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
+            <span className="text-white">Every World Cup venue,</span>{' '}
+            <span className="text-brand-400">1930 → 2026.</span>
+          </h1>
+          <p className="text-ink-300 text-sm mt-2 max-w-2xl">
+            {stadiums.length} stadiums across {hostCountries} host nations. Capacity, altitude,
+            opening year, tournament appearances. Click any row to query the underlying API
+            (<span className="font-mono text-brand-400">GET /stadiums/&lbrace;id&rbrace;</span>).
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-8">
+            <Stat label="Stadiums" value={stadiums.length.toLocaleString()} />
+            <Stat label="Host countries" value={hostCountries.toString()} />
+            <Stat
+              label="Oldest"
+              value={oldest?.opened != null ? String(oldest.opened) : '—'}
+              hint={oldest?.name}
+            />
+            <Stat
+              label="Newest"
+              value={newest?.opened != null ? String(newest.opened) : '—'}
+              hint={newest?.name}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Altitude + Repeat venues */}
+      <section className="max-w-7xl mx-auto px-6 py-10 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <ChartCard
+          title="Highest-altitude venues"
+          subtitle="Estadio Azteca's 2,287m made 1986 famous. Toluca tops out higher."
+          source="GET /stadiums (sorted by elevationM desc)"
+        >
+          <ol className="space-y-1.5 text-sm">
+            {highest.map((s, i) => (
+              <li key={s.id}>
+                <div className="flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-ink-800/40">
+                  <span className="text-[11px] font-mono text-ink-500 w-5 text-right">{i + 1}.</span>
+                  <Flag country={s.country} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-white truncate">{s.name}</div>
+                    <div className="text-[11px] text-ink-300 truncate">{s.city}, {s.country}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-bold text-accent-gold font-mono tabular-nums">
+                      {s.elevationM!.toLocaleString()} m
+                    </div>
+                    {s.capacity != null && (
+                      <div className="text-[10px] text-ink-500">cap {s.capacity.toLocaleString()}</div>
+                    )}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </ChartCard>
+
+        <ChartCard
+          title="Most-used venues"
+          subtitle="Stadiums that hosted multiple World Cups"
+          source="GET /stadiums (filter: tournaments.length > 1)"
+        >
+          {mostUsed.length === 0 ? (
+            <p className="text-sm text-ink-500">No multi-tournament venues yet.</p>
+          ) : (
+            <ol className="space-y-1.5 text-sm">
+              {mostUsed.map((s, i) => (
+                <li key={s.id}>
+                  <div className="flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-ink-800/40">
+                    <span className="text-[11px] font-mono text-ink-500 w-5 text-right">{i + 1}.</span>
+                    <Flag country={s.country} />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-white truncate">{s.name}</div>
+                      <div className="text-[11px] text-ink-300 truncate">{s.city}, {s.country}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-bold text-accent-gold font-mono tabular-nums">
+                        {s.tournaments.length}×
+                      </div>
+                      <div className="text-[10px] text-ink-500 font-mono">
+                        {s.tournaments.join(', ')}
+                      </div>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
+        </ChartCard>
+      </section>
+
+      {/* Capacity trend + country donut */}
+      <section className="max-w-7xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <ChartCard
+          title="Average capacity by opening decade"
+          subtitle="Are WC venues getting bigger over time?"
+          source="GET /stadiums (group by floor(opened / 10) × 10)"
+        >
+          <BarSeries data={capacityByDecade} color={SERIES_COLORS.cyan} valueLabel="seats" height={260} />
+        </ChartCard>
+
+        <ChartCard
+          title="Stadiums by host country"
+          subtitle={`${countryDonut.length} countries have hosted matches`}
+          source="GET /stadiums (group by country)"
+        >
+          <Donut data={countryDonut} centerLabel={String(stadiums.length)} height={300} />
+        </ChartCard>
+      </section>
+
+      {/* Big table */}
+      <section className="max-w-7xl mx-auto px-6 py-10">
+        <div className="flex items-baseline justify-between mb-4 flex-wrap gap-3">
+          <h2 className="text-2xl font-bold">All venues</h2>
+          <div className="flex items-center gap-1 text-xs">
+            <span className="text-ink-500 mr-2">Sort:</span>
+            <SortLink current={sort} key_="tournaments" label="WC appearances" />
+            <SortLink current={sort} key_="capacity"    label="Capacity" />
+            <SortLink current={sort} key_="altitude"    label="Altitude" />
+            <SortLink current={sort} key_="opened"      label="Opening year" />
+            <SortLink current={sort} key_="name"        label="Name" />
+          </div>
+        </div>
+        <div className="bg-ink-900 border border-ink-800 rounded-xl overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-ink-800/60 text-left text-[10px] uppercase tracking-widest text-ink-300">
+              <tr>
+                <th className="px-4 py-3">Stadium</th>
+                <th className="px-4 py-3">Country</th>
+                <th className="px-4 py-3 text-right">Capacity</th>
+                <th className="px-4 py-3 text-right">Altitude</th>
+                <th className="px-4 py-3 text-right">Opened</th>
+                <th className="px-4 py-3">WC editions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((s) => (
+                <tr key={s.id} className="border-t border-ink-800/60 hover:bg-ink-800/30">
+                  <td className="px-4 py-2.5">
+                    <div className="font-semibold text-white truncate">{s.name}</div>
+                    <div className="text-[10px] text-ink-500">{s.city}{s.demolished ? ` · demolished ${s.demolished}` : ''}</div>
+                  </td>
+                  <td className="px-4 py-2.5 text-xs">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Flag country={s.country} />
+                      <span className="text-ink-200">{s.country}</span>
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-ink-200 text-xs">
+                    {s.capacity != null ? s.capacity.toLocaleString() : '—'}
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-xs">
+                    {typeof s.elevationM === 'number'
+                      ? <span className={(s.elevationM ?? 0) >= 1500 ? 'text-accent-gold' : 'text-ink-200'}>
+                          {s.elevationM.toLocaleString()} m
+                        </span>
+                      : <span className="text-ink-500">—</span>}
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-ink-300 text-xs">
+                    {s.opened ?? '—'}
+                  </td>
+                  <td className="px-4 py-2.5 text-xs font-mono text-ink-300">
+                    {s.tournaments.length === 0
+                      ? <span className="text-ink-500">—</span>
+                      : s.tournaments.join(', ')}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </>
+  );
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────
+
+function sortStadiums(rows: ApiStadium[], by: string): ApiStadium[] {
+  const list = [...rows];
+  switch (by) {
+    case 'capacity':
+      return list.sort((a, b) => (b.capacity ?? 0) - (a.capacity ?? 0));
+    case 'altitude':
+      return list.sort((a, b) => (b.elevationM ?? -1) - (a.elevationM ?? -1));
+    case 'opened':
+      return list.sort((a, b) => (a.opened ?? 9999) - (b.opened ?? 9999));
+    case 'name':
+      return list.sort((a, b) => a.name.localeCompare(b.name));
+    case 'tournaments':
+    default:
+      return list.sort((a, b) =>
+        b.tournaments.length - a.tournaments.length ||
+        (b.capacity ?? 0) - (a.capacity ?? 0),
+      );
+  }
+}
+
+function SortLink({ current, key_, label }: { current: string; key_: string; label: string }) {
+  const active = current === key_;
+  return (
+    <Link
+      href={`/stadiums/?sort=${key_}`}
+      className={`px-2.5 py-1 rounded ${active ? 'bg-brand-600/20 border border-brand-500 text-brand-300' : 'text-ink-300 hover:text-ink-100 border border-transparent'}`}
+    >
+      {label}
+    </Link>
+  );
+}
+
+function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div className="bg-ink-900/80 backdrop-blur border border-ink-800 rounded-xl p-4">
+      <div className="text-2xl sm:text-3xl font-black text-white">{value}</div>
+      <div className="text-[10px] uppercase tracking-widest text-ink-300 mt-1">{label}</div>
+      {hint && <div className="text-[10px] text-ink-500 mt-0.5 truncate" title={hint}>{hint}</div>}
+    </div>
+  );
+}
+
+function ChartCard({
+  title, subtitle, source, children,
+}: {
+  title: string;
+  subtitle: string;
+  source?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="bg-ink-900 border border-ink-800 rounded-2xl p-5">
+      <div className="mb-3">
+        <h3 className="text-sm font-bold text-white">{title}</h3>
+        <div className="text-[11px] text-ink-300">{subtitle}</div>
+      </div>
+      {children}
+      {source && (
+        <div className="mt-3 pt-3 border-t border-ink-800/60 text-[10px] font-mono text-ink-500">
+          {source}
+        </div>
+      )}
+    </div>
+  );
+}
