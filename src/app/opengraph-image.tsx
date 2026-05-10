@@ -28,10 +28,17 @@ export default async function OgImage() {
           Zafronix WC Explorer
         </div>
 
-        <div style={{ fontSize: 92, fontWeight: 900, lineHeight: 1.05,
+        {/* Two stacked rows — Satori requires every multi-child div to
+            have an explicit display value, so we use flex-column here
+            instead of an inline <br/> trick. */}
+        <div style={{ display: 'flex', flexDirection: 'column',
+                      fontSize: 92, fontWeight: 900, lineHeight: 1.05,
                       letterSpacing: -2, marginBottom: 24, maxWidth: '90%' }}>
-          Every <span style={{ color: OG_BRAND }}>FIFA World Cup</span><br/>
-          since 1930, charted.
+          <div style={{ display: 'flex', gap: 16 }}>
+            <span>Every</span>
+            <span style={{ color: OG_BRAND }}>FIFA World Cup</span>
+          </div>
+          <div>since 1930, charted.</div>
         </div>
 
         <div style={{ fontSize: 28, color: OG_MUTED, marginBottom: 'auto', maxWidth: 800 }}>

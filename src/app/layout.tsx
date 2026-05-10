@@ -5,7 +5,14 @@ import { SiteHeader } from '@/components/SiteHeader';
 import { VisitBeacon } from '@/components/VisitBeacon';
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://api.zafronix.com'),
+  // metadataBase MUST include the basePath ('/wc-explorer') because
+  // Next.js resolves relative OG/Twitter image URLs against this base
+  // and the basePath is otherwise stripped before resolution. Without
+  // /wc-explorer here, opengraph-image references emit as
+  // https://api.zafronix.com/1986/opengraph-image (404) instead of
+  // https://api.zafronix.com/wc-explorer/1986/opengraph-image (200),
+  // and every social preview ships with a missing image.
+  metadataBase: new URL('https://api.zafronix.com/wc-explorer'),
   title: {
     default: 'WC Explorer · Zafronix',
     template: '%s · WC Explorer',
