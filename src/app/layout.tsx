@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Script from 'next/script';
 import './globals.css';
 import { SiteHeader } from '@/components/SiteHeader';
+import { VisitBeacon } from '@/components/VisitBeacon';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://api.zafronix.com'),
@@ -35,6 +36,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className="dark">
       <body className="min-h-screen flex flex-col">
         <SiteHeader />
+
+        {/* Visitor-tracking beacon — fires one POST per page load
+            (including client-side route changes) to /api/visit, which
+            forwards the visitor's IP to the WC API for the admin map. */}
+        <VisitBeacon />
 
         <main className="flex-1">{children}</main>
 
