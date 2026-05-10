@@ -35,7 +35,10 @@ export function VisitBeacon() {
     // request and dispatches it even if the page is closing. Falls
     // back to fetch on rare environments without sendBeacon support
     // (some legacy in-app browsers, headless test tooling).
-    const url = '/wc-explorer/api/visit';
+    // Trailing slash matches next.config.ts trailingSlash: true.
+    // Without it, hitting /api/visit returns 308 → /api/visit/ and
+    // sendBeacon doesn't follow redirects on every browser.
+    const url = '/wc-explorer/api/visit/';
     try {
       if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
         navigator.sendBeacon(url);
