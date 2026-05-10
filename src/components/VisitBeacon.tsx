@@ -31,21 +31,31 @@ export function VisitBeacon() {
   const pathname = usePathname();
 
   useEffect(() => {
-    // sendBeacon is fire-and-forget by spec; the browser queues the
-    // request and dispatches it even if the page is closing. Falls
-    // back to fetch on rare environments without sendBeacon support
-    // (some legacy in-app browsers, headless test tooling).
-    // Trailing slash matches next.config.ts trailingSlash: true.
-    // Without it, hitting /api/visit returns 308 → /api/visit/ and
-    // sendBeacon doesn't follow redirects on every browser.
-    const url = '/wc-explorer/api/visit/';
+    // Beacon fires DIRECTLY at the public WC API (not through our
+    // own /api/visit proxy route) so the underlying TCP connection
+    // comes from the visitor's browser, not from this wc-explorer
+    // process on its VPS. nginx in front of the API captures the
+    // visitor's real IP via X-Forwarded-For; the admin's geo map
+    // then resolves the actual user's city instead of the VPS's
+    // Atlanta IONOS location.
+    //
+    // The endpoint is anonymous + Origin-gated — the Origin /
+    // Referer header must come from api.zafronix.com /
+    // zafronix.com / siono.app, so random sites can't spam our
+    // geo data.
+    //
+    // sendBeacon is fire-and-forget by spec; browser queues the
+    // request and dispatches it even on page-unload. Falls back to
+    // fetch+keepalive on rare environments without sendBeacon.
+    const url = 'https://api.zafronix.com/fifa/worldcup/v1/track/visit?origin=wc-explorer';
     try {
       if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
         navigator.sendBeacon(url);
       } else {
-        // Fire-and-forget — don't await, don't .catch (we don't care
-        // about the response on the browser side).
-        fetch(url, { method: 'POST', keepalive: true });
+        // Fire-and-forget. mode: 'cors' + credentials: 'omit' is the
+        // standard cross-origin beacon shape; the API responds with
+        // permissive CORS headers for our whitelisted origins.
+        fetch(url, { method: 'POST', keepalive: true, mode: 'cors', credentials: 'omit' });
       }
     } catch {
       // Swallow — beacon failures should never affect the user-
