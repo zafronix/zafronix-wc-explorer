@@ -12,6 +12,7 @@
  */
 
 import 'server-only';
+import { headers } from 'next/headers';
 
 export const WC_API_BASE =
   process.env.WC_API_BASE ?? 'https://api.zafronix.com/fifa/worldcup/v1';
@@ -24,10 +25,51 @@ export const REVALIDATE = {
   live:   60,
 } as const;
 
+/** Read the original visitor's IP from the incoming request, so we can
+ *  forward it to the API for geo-attribution. Without this, every API
+ *  call would appear to originate from the wc-explorer's VPS IP and
+ *  the admin's request map would show a single dot in Frankfurt for
+ *  thousands of real visitors.
+ *
+ *  Returns null when called outside a request scope (e.g. during
+ *  build-time prerender, OG image generation under static-export mode,
+ *  or any path that doesn't have headers() available). The API still
+ *  records the request in that case — just without a visitor IP, so
+ *  the geo map skips it. Better than throwing.
+ *
+ *  We pull from x-forwarded-for first (honored by nginx in front of
+ *  the explorer's Next.js server), then x-real-ip, matching the same
+ *  precedence the API itself uses. */
+async function visitorIp(): Promise<string | null> {
+  try {
+    const h = await headers();
+    return (
+      h.get('x-forwarded-for')?.split(',')[0]?.trim()
+      || h.get('x-real-ip')
+      || null
+    );
+  } catch {
+    // No request scope (build-time / OG render / static).
+    return null;
+  }
+}
+
 async function apiGet<T>(path: string, opts: { revalidate?: number; tags?: string[] } = {}): Promise<T> {
   if (!WC_API_KEY) throw new Error('WC_API_KEY env var unset');
+
+  // Forward the visitor IP + origin tag so the API's usage tracker
+  // attributes the request to the actual end user, not to our own
+  // VPS. The API only honors these headers for internal-tier keys
+  // (zwc_internal_*); customer keys can't spoof them.
+  const requestHeaders: Record<string, string> = {
+    'X-API-Key':     WC_API_KEY,
+    'X-Origin-App':  'wc-explorer',
+  };
+  const ip = await visitorIp();
+  if (ip) requestHeaders['X-Visitor-IP'] = ip;
+
   const res = await fetch(`${WC_API_BASE}${path}`, {
-    headers: { 'X-API-Key': WC_API_KEY },
+    headers: requestHeaders,
     next: {
       revalidate: opts.revalidate ?? REVALIDATE.static,
       tags: opts.tags,
