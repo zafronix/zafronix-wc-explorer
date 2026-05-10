@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   description:
     '23 World Cup tournaments. 1,168+ matches. 2,500+ players. Interactive charts powered by the Zafronix World Cup API — your starting point for fantasy apps, dashboards, and analytics.',
   keywords: ['world cup explorer', 'world cup data', 'fifa world cup api', 'world cup statistics', 'world cup history', 'world cup 2026'],
-  alternates: { canonical: '/wc-explorer/' },
+  alternates: { canonical: '/' },
 };
 
 export default async function LandingPage() {

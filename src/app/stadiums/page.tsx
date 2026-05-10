@@ -31,7 +31,7 @@ export const metadata: Metadata = {
   title: 'Stadiums — every World Cup venue 1930→2026',
   description: '206 venues that have hosted FIFA World Cup matches. Capacity, altitude (Estadio Toluca tops at 2,666 m), host country, tournament appearances, and goals-per-match by altitude band. Map view + searchable table.',
   keywords: ['world cup stadiums', 'world cup venues', 'highest altitude world cup stadium', 'estadio azteca', 'world cup 2026 stadiums', 'fifa world cup venues map'],
-  alternates: { canonical: '/wc-explorer/stadiums/' },
+  alternates: { canonical: '/stadiums/' },
 };
 
 interface PageProps {

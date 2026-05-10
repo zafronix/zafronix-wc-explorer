@@ -42,7 +42,7 @@ export async function generateMetadata({ params }: { params: Promise<{ year: str
       ...(m.champion ? [`${m.champion} ${m.year} world cup`] : []),
       ...m.host.map((h) => `${m.year} world cup ${h.toLowerCase()}`),
     ],
-    alternates: { canonical: `/wc-explorer/${m.year}/` },
+    alternates: { canonical: `/${m.year}/` },
   };
 }
 

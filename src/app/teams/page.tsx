@@ -33,7 +33,7 @@ export const metadata: Metadata = {
   title: 'Teams — every nation that ever played a World Cup',
   description: 'Cross-tournament analysis: most appearances, confederation breakdown, debutants over time, distance traveled, squad-age leaderboards, repeat coaches. Every country that ever appeared in a FIFA World Cup.',
   keywords: ['world cup teams', 'world cup nations', 'world cup appearances', 'fifa world cup teams', 'world cup debutants', 'world cup confederation breakdown'],
-  alternates: { canonical: '/wc-explorer/teams/' },
+  alternates: { canonical: '/teams/' },
 };
 
 interface TeamRecord {

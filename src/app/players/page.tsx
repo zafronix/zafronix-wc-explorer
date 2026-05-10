@@ -32,7 +32,7 @@ export const metadata: Metadata = {
   title: 'Players — every World Cup squad, searchable',
   description: 'Every player from every FIFA World Cup squad, searchable by name, country, position, birth year, and birth month. With a GOAT overlay (Pelé, Maradona, Cruyff, Messi, CR7, R9) and the all-time hat-tricks leaderboard.',
   keywords: ['world cup players', 'world cup squad search', 'world cup hat tricks', 'fifa world cup goalscorers', 'world cup goat list', 'world cup birth month'],
-  alternates: { canonical: '/wc-explorer/players/' },
+  alternates: { canonical: '/players/' },
 };
 
 interface PageProps {
