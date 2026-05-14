@@ -17,6 +17,7 @@ import {
 } from '@/components/charts/Charts';
 import { Flag, HostFlags } from '@/components/Flag';
 import { CompareYearsPicker } from './CompareYearsPicker';
+import { SionoPollEmbed } from '@/components/SionoPollEmbed';
 
 export const dynamic = 'force-dynamic';
 
@@ -175,6 +176,18 @@ export default async function ComparePage({
                 </div>
               ))}
             </div>
+          </section>
+
+          {/* Siono evergreen-trivia poll — the user picks any years
+              they want to compare, so we can't pick a year-specific
+              poll. The `wc-evergreen` context is reserved for cross-
+              tournament trivia that works regardless of which slice
+              of history is on screen. */}
+          <section className="max-w-7xl mx-auto px-6 pb-2">
+            <SionoPollEmbed
+              context={{ tournament: 'wc-evergreen' }}
+              eyebrow="WC trivia · pick your side"
+            />
           </section>
 
           {/* Charts row 1 */}

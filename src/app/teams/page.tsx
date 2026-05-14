@@ -26,6 +26,7 @@ import { listTournaments, getTournament, listMatchesByYear, listStadiums, type A
 import { Flag } from '@/components/Flag';
 import { YearStrip } from '@/components/YearStrip';
 import { BarSeries, Donut, SERIES_COLORS } from '@/components/charts/Charts';
+import { SionoPollEmbed } from '@/components/SionoPollEmbed';
 
 export const dynamic = 'force-dynamic';
 
@@ -365,6 +366,17 @@ export default async function TeamsPage() {
             />
           </div>
         </div>
+      </section>
+
+      {/* Siono poll — teams-page-scoped. Operator-curated under the
+          `wc-teams` tournament tag so this slot is independent of
+          the 2026-marquee poll on the landing page. Renders nothing
+          until a poll with that tag is seeded. */}
+      <section className="max-w-7xl mx-auto px-6 pt-8 pb-2">
+        <SionoPollEmbed
+          context={{ tournament: 'wc-teams' }}
+          eyebrow="Fan poll · which nation are you backing?"
+        />
       </section>
 
       {/* Most appearances + Best finishes */}
