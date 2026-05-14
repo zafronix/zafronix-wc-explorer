@@ -19,6 +19,7 @@ import {
 } from '@/components/charts/Charts';
 import { Flag, HostFlags } from '@/components/Flag';
 import { YearStrip } from '@/components/YearStrip';
+import { SionoPollEmbed } from '@/components/SionoPollEmbed';
 import type { Metadata } from 'next';
 
 export const dynamic = 'force-dynamic';
@@ -168,6 +169,18 @@ export default async function LandingPage() {
             />
           </div>
         </div>
+      </section>
+
+      {/* ─── Fan poll (Siono embed) ─────────────────────────────────
+          Renders the active tournament-marquee poll if siono has one
+          tagged for `wc-2026`. 204 → component returns null, page
+          layout untouched. Sits above the data dive so the eye lands
+          on it as the hero scroll-off lands. */}
+      <section className="max-w-7xl mx-auto px-6 pt-8 pb-2">
+        <SionoPollEmbed
+          context={{ tournament: 'wc-2026' }}
+          eyebrow="Fan poll · powered by Siono"
+        />
       </section>
 
       {/* Charts row 1 */}

@@ -23,6 +23,7 @@ import {
 import { BarSeries, Donut, SERIES_COLORS } from '@/components/charts/Charts';
 import { Flag } from '@/components/Flag';
 import { StadiumMap, type StadiumMapPoint } from '@/components/StadiumMap';
+import { SionoPollEmbed } from '@/components/SionoPollEmbed';
 
 export const dynamic = 'force-dynamic';
 
@@ -233,6 +234,15 @@ export default async function YearPage({ params }: { params: Promise<{ year: str
           <PodiumStep place={1} team={meta.champion} />
           <PodiumStep place={3} team={meta.thirdPlace} />
         </div>
+      </section>
+
+      {/* Siono poll — appears above-the-fold only when siono has an
+          active poll tagged for this tournament. 204 → renders
+          nothing, so historical years without curated polls have no
+          visible empty slot. Resolves by context first (tournament
+          tag); editorial can pin a specific pollId here later. */}
+      <section className="max-w-7xl mx-auto px-6 pb-6">
+        <SionoPollEmbed context={{ tournament: `wc-${yearNum}` }} />
       </section>
 
       {/* Awards row */}
