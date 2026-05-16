@@ -25,9 +25,9 @@ import { Flag } from '@/components/Flag';
 import { StadiumMap, type StadiumMapPoint } from '@/components/StadiumMap';
 import { SionoPollEmbed } from '@/components/SionoPollEmbed';
 
-// ISR — see comment on src/app/page.tsx. Per-year pages also carry
-// a Siono embed (revalidate:30), so 30s is the effective window.
-export const revalidate = 30;
+// See note on src/app/page.tsx — force-dynamic kept; fetch-level
+// cache does the heavy lifting.
+export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }: { params: Promise<{ year: string }> }): Promise<Metadata> {
   const { year } = await params;

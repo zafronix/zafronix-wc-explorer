@@ -28,9 +28,9 @@ import { YearStrip } from '@/components/YearStrip';
 import { BarSeries, Donut, SERIES_COLORS } from '@/components/charts/Charts';
 import { SionoPollEmbed } from '@/components/SionoPollEmbed';
 
-// ISR — see comment on src/app/page.tsx. Teams page also carries a
-// Siono embed (revalidate:30), so 30s is the effective window.
-export const revalidate = 30;
+// See note on src/app/page.tsx — force-dynamic kept; fetch-level
+// cache does the heavy lifting.
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'Teams — every nation that ever played a World Cup',

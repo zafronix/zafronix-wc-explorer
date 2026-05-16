@@ -22,13 +22,14 @@ import { YearStrip } from '@/components/YearStrip';
 import { SionoPollEmbed } from '@/components/SionoPollEmbed';
 import type { Metadata } from 'next';
 
-// ISR — historic data shouldn't re-render per request. The Siono
-// embed inside has revalidate:30 which becomes the effective page
-// revalidation window; other fetches (REVALIDATE.static = 24h) cap
-// at 30s here because Next picks the SHORTEST child revalidate.
-// 30s also matches siono's CDN cache header so poll totals are at
-// most ~30s stale.
-export const revalidate = 30;
+// Force-dynamic kept — the per-fetch data cache (see wc-api.ts) does
+// the heavy lifting now that we no longer per-visitor-stamp every
+// API call with X-Visitor-IP. SSR cost is just running the page
+// shell against pre-cached data (sub-50ms). Going static would
+// require WC_API_KEY at build time + per-page generateStaticParams,
+// not worth the deploy complexity for the cache gain we're now
+// already getting at the fetch layer.
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'World Cup Explorer — every tournament 1930→2026',
