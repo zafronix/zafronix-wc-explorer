@@ -119,6 +119,22 @@ export interface ApiSquadPlayer {
   club?: { name: string; country?: string } | null;
   goals: number;
   captain?: boolean;
+  // ─── Optional enrichment (2026-05-17 schema). Absent = no data. ─
+  heightCm?: number | null;
+  weightKg?: number | null;
+  dominantFoot?: 'left' | 'right' | 'both' | 'unknown' | null;
+  professional?: boolean | null;
+  caps?: number | null;
+  nationalGoals?: number | null;
+  birthCountry?: string | null;
+  goalBreakdown?: {
+    leftFoot?:  number;
+    rightFoot?: number;
+    header?:    number;
+    penalty?:   number;
+    other?:     number;
+    ownGoals?:  number;
+  };
 }
 
 export interface ApiKnockoutMatch {
@@ -239,9 +255,15 @@ export async function getAggregateChampions(): Promise<ApiAggregateChampions> {
   });
 }
 
-export async function getAggregatePlayers(years?: number[]): Promise<ApiAggregatePlayers> {
-  const qs = years && years.length > 0 ? `?years=${years.join(',')}` : '';
-  return apiGet<ApiAggregatePlayers>(`/aggregates/players${qs}`, {
+export async function getAggregatePlayers(
+  years?: number[],
+  hemisphere?: 'N' | 'S',
+): Promise<ApiAggregatePlayers> {
+  const params = new URLSearchParams();
+  if (years && years.length > 0) params.set('years', years.join(','));
+  if (hemisphere)                params.set('hemisphere', hemisphere);
+  const qs = params.toString();
+  return apiGet<ApiAggregatePlayers>(`/aggregates/players${qs ? `?${qs}` : ''}`, {
     revalidate: REVALIDATE.static,
     tags: ['wc:aggregates:players'],
   });
@@ -268,12 +290,89 @@ export interface ApiMatch {
   city:         string | null;
   country?:     string;
   attendance:   number | null;
+  referee?:     { name: string; country: string | null } | null;
+  /** Kickoff weather at the venue. Null = backfill source had no
+   *  coverage for that date/location (mostly pre-1940 matches).
+   *  Backfilled from Open-Meteo Historical Weather API. */
+  weather?: {
+    tempC:           number | null;
+    humidityPct:     number | null;
+    precipitationMm: number | null;
+    windKmh:         number | null;
+    /** WMO weather code (0 = clear, 61-65 = rain, 71-77 = snow, etc).
+     *  See https://open-meteo.com/en/docs#api_form */
+    code:            number | null;
+  } | null;
+  // ─── Optional enrichment (2026-05-17 schema). Absent = no data ──
+  /** Per-goal breakdown. When set, sum of `goals` for each side
+   *  matches the scoreline (excluding shootout). */
+  goals?: ApiGoalEvent[];
+  /** Per-match captain (overrides Team.captain when the on-the-day
+   *  armband differs). */
+  captains?: { home: string | null; away: string | null };
+  /** Per-kick shootout breakdown. Only present when `penalties`
+   *  is also set. */
+  penaltyShootout?: ApiPenaltyShootout;
+  /** Substitution events. Schema-ready; populated for marquee
+   *  matches. */
+  substitutions?: Array<{
+    minute: number;
+    team: 'home' | 'away';
+    on: string;
+    off: string;
+  }>;
+  /** Card events. */
+  cards?: Array<{
+    minute: number;
+    team: 'home' | 'away';
+    player: string;
+    color: 'yellow' | 'red' | 'second_yellow';
+  }>;
+}
+
+export interface ApiGoalEvent {
+  minute: number;
+  addedMinute?: number;
+  team: 'home' | 'away';
+  scorer: string;
+  type?: 'normal' | 'penalty' | 'free_kick' | 'header' | 'own_goal' | 'volley' | 'long_range';
+  bodyPart?: 'left_foot' | 'right_foot' | 'header' | 'chest' | 'other';
+  assist?: string;
+  extraTime?: boolean;
+  note?: string;
+}
+
+export interface ApiPenaltyKick {
+  order: number;
+  team: 'home' | 'away';
+  kicker: string;
+  success: boolean;
+  gk?: string;
+  outcome?: 'scored' | 'saved' | 'missed' | 'post' | 'crossbar';
+}
+
+export interface ApiPenaltyShootout {
+  kicks: ApiPenaltyKick[];
+  homeScore: number;
+  awayScore: number;
+  winner: 'home' | 'away';
 }
 
 interface MatchesListResponse {
   count?:      number;
   data?:       ApiMatch[];
   matches?:    ApiMatch[];
+}
+
+export async function getMatch(id: string): Promise<ApiMatch | null> {
+  try {
+    return await apiGet<ApiMatch>(`/matches/${encodeURIComponent(id)}`, {
+      revalidate: REVALIDATE.static,
+      tags: [`wc:match:${id}`],
+    });
+  } catch {
+    return null;
+  }
 }
 
 export async function listMatchesByYear(year: number): Promise<ApiMatch[]> {
@@ -344,4 +443,57 @@ export async function topScorersForYear(
   }
   scorers.sort((a, b) => b.goals - a.goals || a.name.localeCompare(b.name));
   return scorers.slice(0, limit);
+}
+
+// ─── Referees ────────────────────────────────────────────────────────
+
+export interface ApiRefereeSummary {
+  id:           string;
+  name:         string;
+  country:      string | null;
+  totalMatches: number;
+  years:        number[];
+  tournaments:  number;
+  firstYear:    number;
+  lastYear:     number;
+  byStage:      Record<string, number>;
+}
+
+export interface ApiRefereeDetail extends ApiRefereeSummary {
+  matches: Array<{
+    id:        string;
+    year:      number;
+    date:      string;
+    stage:     string;
+    homeTeam:  string | null;
+    awayTeam:  string | null;
+    homeScore: number | null;
+    awayScore: number | null;
+    stadium:   string | null;
+    city:      string | null;
+  }>;
+}
+
+interface ApiRefereeListResponse {
+  count:    number;
+  returned: number;
+  referees: ApiRefereeSummary[];
+}
+
+export async function listReferees(limit = 100): Promise<ApiRefereeListResponse> {
+  return apiGet<ApiRefereeListResponse>(`/referees?limit=${limit}`, {
+    revalidate: REVALIDATE.static,
+    tags: ['wc:referees'],
+  });
+}
+
+export async function getReferee(id: string): Promise<ApiRefereeDetail | null> {
+  try {
+    return await apiGet<ApiRefereeDetail>(`/referees/${encodeURIComponent(id)}`, {
+      revalidate: REVALIDATE.static,
+      tags: [`wc:referee:${id}`],
+    });
+  } catch {
+    return null;
+  }
 }

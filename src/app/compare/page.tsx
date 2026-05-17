@@ -16,7 +16,7 @@ import {
   BarSeries, SERIES_COLORS, PALETTE,
 } from '@/components/charts/Charts';
 import { Flag, HostFlags } from '@/components/Flag';
-import { CompareYearsPicker } from './CompareYearsPicker';
+import { TournamentMultiSelector } from '@/components/TournamentSelector';
 import { SionoPollEmbed } from '@/components/SionoPollEmbed';
 
 export const dynamic = 'force-dynamic';
@@ -121,7 +121,27 @@ export default async function ComparePage({
             Powered by <span className="font-mono text-brand-400">GET /compare?years=…</span>
           </p>
 
-          <CompareYearsPicker allYears={playedYears} active={years} />
+          <TournamentMultiSelector
+            years={[...playedYears].sort((a, b) => a - b)}
+            playedYears={playedYears}
+            activeYears={years}
+            buildHref={(y) => {
+              const next = years.includes(y) ? years.filter((x) => x !== y) : [...years, y];
+              const sorted = [...next].sort((a, b) => a - b);
+              return sorted.length === 0 ? '/compare/' : `/compare/?years=${sorted.join(',')}`;
+            }}
+            rightSlot={
+              <span className="text-xs text-ink-300">
+                <span className="font-mono text-brand-400">{years.length}</span> selected
+                {years.length === 0 && <span className="text-ink-500 ml-1">— pick 2+ to compare</span>}
+                {years.length > 0 && (
+                  <Link href="/compare/" className="ml-3 text-ink-400 hover:text-ink-200 underline">
+                    Clear
+                  </Link>
+                )}
+              </span>
+            }
+          />
         </div>
       </section>
 

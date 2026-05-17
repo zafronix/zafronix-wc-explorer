@@ -23,7 +23,7 @@ import { listStadiums, listTournaments, listMatchesByYear, type ApiStadium } fro
 import { Flag } from '@/components/Flag';
 import { BarSeries, Donut, SERIES_COLORS } from '@/components/charts/Charts';
 import { StadiumMap, type StadiumMapPoint } from '@/components/StadiumMap';
-import { groupYearsByDecade, decadeShort } from '@/lib/year-groups';
+import { TournamentSelector } from '@/components/TournamentSelector';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,7 +35,7 @@ export const metadata: Metadata = {
 };
 
 interface PageProps {
-  searchParams: Promise<{ sort?: string; years?: string }>;
+  searchParams: Promise<{ sort?: string; year?: string; years?: string }>;
 }
 
 export default async function StadiumsPage({ searchParams }: PageProps) {
@@ -53,13 +53,18 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
   const playedYears = tournaments.filter((t) => t.champion).map((t) => t.year);
   const allYearsForPicker = tournaments.map((t) => t.year);
 
-  // Year picker — same semantics as the Players page. Empty = all years.
-  // When years are selected, narrow stadiums to those whose tournaments[]
-  // intersects the selection. The match-count overlay also re-aggregates
-  // to just the selected years.
-  const requestedYears = sp.years
-    ? sp.years.split(',').map((y) => Number(y.trim())).filter((y) => allYearsForPicker.includes(y))
-    : [];
+  // Single-year picker — same shape as every other view except
+  // /compare. `?year=YYYY` narrows; absent = all-time. Legacy
+  // `?years=Y1,Y2` honored (first year wins) for back-compat with
+  // bookmarks before the unification.
+  const fromYearParam = sp.year ? Number(sp.year) : NaN;
+  const fromYearsParam = sp.years
+    ? Number(sp.years.split(',')[0]?.trim())
+    : NaN;
+  const requestedYear = [fromYearParam, fromYearsParam].find(
+    (y) => Number.isFinite(y) && allYearsForPicker.includes(y as number),
+  ) as number | undefined;
+  const requestedYears = requestedYear ? [requestedYear] : [];
   const yearsActive = requestedYears.length > 0;
   const yearsSet = new Set(requestedYears);
 
@@ -138,6 +143,45 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
       value: Math.round((b.goals / b.matches) * 100) / 100,
       // Carry the totals through so the tooltip can show the underlying
       // numbers, not just the ratio.
+      host: undefined,
+    }));
+
+  // Temperature-effect bucketing — uses the Open-Meteo backfill we
+  // landed for 1940+ matches. Bands picked to span the realistic
+  // football-weather range (cold knockouts in November Europe →
+  // sweltering Qatar / Brazil daytime kickoffs). Pre-1940 matches
+  // have null weather and are skipped — they don't count toward
+  // any bucket.
+  interface TempBucket { label: string; min: number; max: number; matches: number; goals: number; }
+  const tempBuckets: TempBucket[] = [
+    { label: 'Cold (<10°C)',       min: -Infinity, max: 10,  matches: 0, goals: 0 },
+    { label: 'Cool (10-18°C)',     min: 10,        max: 18,  matches: 0, goals: 0 },
+    { label: 'Mild (18-25°C)',     min: 18,        max: 25,  matches: 0, goals: 0 },
+    { label: 'Warm (25-30°C)',     min: 25,        max: 30,  matches: 0, goals: 0 },
+    { label: 'Hot (≥30°C)',        min: 30,        max: Infinity, matches: 0, goals: 0 },
+  ];
+  // We need to iterate matches (not stadiums) for weather since each
+  // match has its own conditions. Use the matchListsByYear we already
+  // built for the altitude pass above.
+  for (const list of matchListsByYear.values()) {
+    for (const m of list) {
+      const temp = m.weather?.tempC;
+      if (temp == null) continue;
+      const homeScore = m.homeScore;
+      const awayScore = m.awayScore;
+      if (homeScore == null || awayScore == null) continue;
+      const goals = homeScore + awayScore;
+      const bucket = tempBuckets.find((b) => temp >= b.min && temp < b.max);
+      if (!bucket) continue;
+      bucket.matches += 1;
+      bucket.goals   += goals;
+    }
+  }
+  const temperatureChart = tempBuckets
+    .filter((b) => b.matches > 0)
+    .map((b) => ({
+      label: b.label,
+      value: Math.round((b.goals / b.matches) * 100) / 100,
       host: undefined,
     }));
 
@@ -245,7 +289,12 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
             (<span className="font-mono text-brand-400">GET /stadiums/&lbrace;id&rbrace;</span>).
           </p>
 
-          <YearPicker years={requestedYears} allYears={allYearsForPicker} />
+          <TournamentSelector
+            years={[...allYearsForPicker].sort((a, b) => a - b)}
+            playedYears={allYearsForPicker.filter((y) => tournaments.find((t) => t.year === y && t.champion))}
+            activeYear={requestedYear ?? null}
+            buildHref={(y) => `/stadiums/?year=${y}`}
+          />
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-8">
             <Stat label="Stadiums" value={stadiums.length.toLocaleString()} />
@@ -449,6 +498,36 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
         </section>
       )}
 
+      {/* Temperature-effect chart — companion to altitude. Uses the
+          Open-Meteo weather backfill (1940+ coverage). Hot weather
+          slowing the game is folklore; this shows whether the
+          numbers back it up. */}
+      {temperatureChart.length > 0 && (
+        <section className="max-w-7xl mx-auto px-6 pb-2">
+          <ChartCard
+            title="Goals per match by kickoff temperature"
+            subtitle="Open-Meteo historical weather at each venue at kickoff. Covers 1940→latest; pre-1940 matches excluded."
+            source="goals.sum / matches.count, grouped by temperature band"
+          >
+            <BarSeries data={temperatureChart} color={SERIES_COLORS.cyan} valueLabel="goals/match" height={240} />
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 text-xs">
+              {tempBuckets.filter((b) => b.matches > 0).map((b) => (
+                <div key={b.label} className="px-3 py-2 bg-ink-950/40 border border-ink-800 rounded-lg">
+                  <div className="text-[10px] uppercase tracking-widest text-ink-500">{b.label}</div>
+                  <div className="text-base font-bold text-white mt-0.5 tabular-nums">
+                    {(b.goals / b.matches).toFixed(2)}
+                    <span className="text-[10px] text-ink-400 font-normal ml-1">g/m</span>
+                  </div>
+                  <div className="text-[10px] text-ink-500 mt-0.5 font-mono tabular-nums">
+                    {b.goals} goals · {b.matches} matches
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ChartCard>
+        </section>
+      )}
+
       {/* Big table */}
       <section className="max-w-7xl mx-auto px-6 py-10">
         <div className="flex items-baseline justify-between mb-4 flex-wrap gap-3">
@@ -565,60 +644,6 @@ function Stat({ label, value, hint, flagCountry }: {
           <span className="truncate">{hint}</span>
         </div>
       )}
-    </div>
-  );
-}
-
-/**
- * Year picker — same shape as the Players page. Empty selection
- * means "all years"; clicking adds, clicking again removes. The
- * URL stays clean when nothing's selected (no ?years= param at
- * all) so the canonical URL for "all stadiums" is just /stadiums/.
- */
-function YearPicker({ years, allYears }: { years: number[]; allYears: number[] }) {
-  const isActive = (y: number) => years.includes(y);
-  function urlWith(y: number) {
-    const next = isActive(y) ? years.filter((v) => v !== y) : [...years, y].sort();
-    if (next.length === 0) return '/stadiums/';
-    return `/stadiums/?years=${next.join(',')}`;
-  }
-  return (
-    <div className="mt-6">
-      <div className="flex items-baseline justify-between mb-2">
-        <div className="text-[10px] uppercase tracking-widest text-ink-300">
-          Tournament — click to filter ({years.length === 0 ? 'showing all years' : `${years.length} selected`})
-        </div>
-        {years.length > 0 && (
-          <Link href="/stadiums/" className="text-[11px] text-brand-400 hover:underline">
-            Clear
-          </Link>
-        )}
-      </div>
-      <div className="flex flex-wrap gap-x-4 gap-y-2">
-        {/* Decade-grouped, chronological. */}
-        {groupYearsByDecade(allYears).map((g) => (
-          <div key={g.decade}>
-            <div className="text-[9px] uppercase tracking-widest text-ink-500 mb-1 font-mono">
-              {decadeShort(g.decade)}
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {g.years.map((y) => (
-                <Link
-                  key={y}
-                  href={urlWith(y)}
-                  className={`px-2.5 py-1 rounded text-[11px] font-mono ${
-                    isActive(y)
-                      ? 'bg-brand-600/30 border border-brand-500 text-brand-200'
-                      : 'bg-ink-800 border border-ink-700 text-ink-400 hover:text-ink-100'
-                  }`}
-                >
-                  {y}
-                </Link>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

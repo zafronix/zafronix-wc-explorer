@@ -18,7 +18,8 @@ import {
   AreaSeries, BarSeries, LineSeries, Donut, SERIES_COLORS,
 } from '@/components/charts/Charts';
 import { Flag, HostFlags } from '@/components/Flag';
-import { YearStrip } from '@/components/YearStrip';
+import { TournamentSelector } from '@/components/TournamentSelector';
+import { ShowTheCall } from '@/components/ShowTheCall';
 import { SionoPollEmbed } from '@/components/SionoPollEmbed';
 import type { Metadata } from 'next';
 
@@ -143,13 +144,16 @@ export default async function LandingPage() {
             </div>
           </div>
 
-          {/* Year strip — quick jump into any tournament. */}
-          <div className="mt-10">
-            <YearStrip
-              years={tournaments.map((t) => t.year)}
-              label="Jump to a tournament"
-            />
-          </div>
+          {/* Year strip — quick jump into any tournament. Ascending,
+              played years bright, upcoming dim. Same component used
+              across every page except /compare. */}
+          <TournamentSelector
+            years={tournaments.map((t) => t.year).sort((a, b) => a - b)}
+            playedYears={tournaments.filter((t) => t.champion).map((t) => t.year)}
+            activeYear={null}
+            buildHref={(y) => `/${y}/`}
+            label="Jump to a tournament"
+          />
 
           {/* Big numbers */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-8">
@@ -195,7 +199,7 @@ export default async function LandingPage() {
         <ChartCard
           title="Goals per tournament"
           subtitle="Total goals scored, 1930–latest"
-          source="GET /compare?years=…"
+          previewEndpoint={`/compare?years=${playedYears.join(',')}`}
         >
           <AreaSeries data={goalsByYear} color={SERIES_COLORS.brand} height={260} />
         </ChartCard>
@@ -203,7 +207,7 @@ export default async function LandingPage() {
         <ChartCard
           title="Scoring rate"
           subtitle="Goals / match, by tournament"
-          source="GET /compare?years=…"
+          previewEndpoint={`/compare?years=${playedYears.join(',')}`}
         >
           <LineSeries
             data={goalsPerMatch}
@@ -216,7 +220,7 @@ export default async function LandingPage() {
         <ChartCard
           title="Tournament size"
           subtitle="Teams that qualified"
-          source="GET /tournaments/{year}"
+          previewEndpoint="/tournaments/2022"
         >
           <BarSeries
             data={teamsByYear}
@@ -232,7 +236,7 @@ export default async function LandingPage() {
         <ChartCard
           title="Attendance over time"
           subtitle="Total fans through the gates"
-          source="GET /tournaments/{year}.totalAttendance"
+          previewEndpoint={`/compare?years=${playedYears.join(',')}`}
           className="lg:col-span-2"
         >
           <AreaSeries data={attendanceByYear} color={SERIES_COLORS.cyan} height={300} />
@@ -241,7 +245,7 @@ export default async function LandingPage() {
         <ChartCard
           title="Champions by country"
           subtitle="Who's lifted the trophy"
-          source="GET /aggregates/champions"
+          previewEndpoint="/aggregates/champions"
         >
           {/* Donut renders flags + country + count directly on each
               slice (Phase A) so the side legend is no longer needed. */}
@@ -365,11 +369,16 @@ function BigNumber({
 }
 
 function ChartCard({
-  title, subtitle, source, children, className = '',
+  title, subtitle, source, previewEndpoint, children, className = '',
 }: {
   title: string;
   subtitle: string;
+  /** Static label shown when no live preview is wired (legacy). */
   source?: string;
+  /** Concrete endpoint path. When set, replaces the static `source`
+   *  footer with a `<ShowTheCall>` disclosure that fetches a real
+   *  response live. This is the conversion lever — see ShowTheCall.tsx. */
+  previewEndpoint?: string;
   children: React.ReactNode;
   className?: string;
 }) {
@@ -380,11 +389,13 @@ function ChartCard({
         <div className="text-[11px] text-ink-300">{subtitle}</div>
       </div>
       {children}
-      {source && (
+      {previewEndpoint ? (
+        <ShowTheCall endpoint={previewEndpoint} />
+      ) : source ? (
         <div className="mt-3 pt-3 border-t border-ink-800/60 text-[10px] font-mono text-ink-500">
           {source}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

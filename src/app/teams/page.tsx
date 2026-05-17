@@ -24,7 +24,7 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import { listTournaments, getTournament, listMatchesByYear, listStadiums, type ApiMatch, type ApiStadium } from '@/lib/wc-api';
 import { Flag } from '@/components/Flag';
-import { YearStrip } from '@/components/YearStrip';
+import { TournamentSelector } from '@/components/TournamentSelector';
 import { BarSeries, Donut, SERIES_COLORS } from '@/components/charts/Charts';
 import { SionoPollEmbed } from '@/components/SionoPollEmbed';
 
@@ -352,10 +352,17 @@ export default async function TeamsPage() {
             <span className="font-mono text-brand-400">GET /tournaments/&lbrace;year&rbrace;</span> aggregated client-side.
           </p>
 
-          {/* Year strip — quick jump to per-tournament drill-down. */}
-          <div className="mt-6">
-            <YearStrip years={playedYears} label="Jump to a tournament" />
-          </div>
+          {/* Year strip — quick jump to per-tournament drill-down.
+              No year is "active" on this page (the view aggregates
+              across every WC); clicking a pill navigates to the
+              corresponding /[year]/ page. */}
+          <TournamentSelector
+            years={[...playedYears].sort((a, b) => a - b)}
+            playedYears={playedYears}
+            activeYear={null}
+            buildHref={(y) => `/${y}/`}
+            label="Jump to a tournament"
+          />
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-8">
             <Stat label="Distinct nations" value={allTeams.length.toString()} />

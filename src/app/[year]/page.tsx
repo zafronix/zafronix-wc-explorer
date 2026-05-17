@@ -24,6 +24,7 @@ import { BarSeries, Donut, SERIES_COLORS } from '@/components/charts/Charts';
 import { Flag } from '@/components/Flag';
 import { StadiumMap, type StadiumMapPoint } from '@/components/StadiumMap';
 import { SionoPollEmbed } from '@/components/SionoPollEmbed';
+import { TournamentSelector } from '@/components/TournamentSelector';
 
 // See note on src/app/page.tsx — force-dynamic kept; fetch-level
 // cache does the heavy lifting.
@@ -210,6 +211,17 @@ export default async function YearPage({ params }: { params: Promise<{ year: str
             </div>
           )}
 
+          {/* Year picker — lets the operator hop between WCs without
+              going back to the index. Active year highlighted, played
+              vs upcoming visually distinct. */}
+          <TournamentSelector
+            years={allTournaments.map((t) => t.year).sort((a, b) => a - b)}
+            playedYears={allTournaments.filter((t) => t.champion).map((t) => t.year)}
+            activeYear={yearNum}
+            buildHref={(y) => `/${y}/`}
+            label="Jump to another tournament"
+          />
+
           {/* Big stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-10">
             <Stat label="Teams" value={meta.teamsCount?.toString() ?? '—'} />
@@ -332,6 +344,123 @@ export default async function YearPage({ params }: { params: Promise<{ year: str
       )}
 
       {/* Top scorers + Confederation breakdown */}
+      {/* Squad composition — domestic vs foreign-based players, per
+          team. Derived from each player's club.country vs their
+          team's country. Unknown bucket exists because the dataset's
+          club→country map covers ~72% of historical clubs; the gap
+          is honest rather than guessed. Sorted by "% playing abroad"
+          descending so the most-foreign-based squads sit at the top
+          — those tend to be CONMEBOL nations in modern eras (Brazil,
+          Argentina, Uruguay) and small-population European nations. */}
+      {(() => {
+        type SquadComp = { team: string; total: number; domestic: number; abroad: number; unknown: number };
+        const rows: SquadComp[] = [];
+        for (const team of teams) {
+          const tc = team.name?.trim();
+          if (!tc) continue;
+          let domestic = 0, abroad = 0, unknown = 0;
+          for (const p of team.squad ?? []) {
+            const country = p.club?.country?.trim();
+            if (!country) unknown++;
+            else if (country === tc) domestic++;
+            else abroad++;
+          }
+          const total = domestic + abroad + unknown;
+          if (total === 0) continue;
+          rows.push({ team: tc, total, domestic, abroad, unknown });
+        }
+        rows.sort((a, b) => {
+          // sort by pct abroad descending — ignore unknowns in the
+          // sort key so it ranks among teams we actually have data
+          // for
+          const known = (r: SquadComp) => r.domestic + r.abroad;
+          const pa = known(a) > 0 ? a.abroad / known(a) : 0;
+          const pb = known(b) > 0 ? b.abroad / known(b) : 0;
+          return pb - pa;
+        });
+        if (rows.length === 0) return null;
+        return (
+          <section className="max-w-7xl mx-auto px-6 pb-6">
+            <div className="bg-ink-900 border border-ink-800 rounded-2xl p-5">
+              <header className="flex items-baseline justify-between gap-2 mb-4 flex-wrap">
+                <div>
+                  <h2 className="text-sm font-bold text-white">Squad composition — domestic vs foreign-based</h2>
+                  <p className="text-[11px] text-ink-300 mt-1">
+                    Where each player&apos;s club is based. Sorted by % playing abroad. Pre-1990s WCs lean
+                    heavily domestic; modern CONMEBOL squads lean heavily abroad.
+                  </p>
+                </div>
+                <span className="text-[10px] text-ink-500 font-mono whitespace-nowrap">
+                  {rows.length} teams · club→country map covers ~72% of historical clubs
+                </span>
+              </header>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {rows.map((r) => {
+                  const known = r.domestic + r.abroad;
+                  const pctAbroad = known > 0 ? Math.round((r.abroad / known) * 100) : 0;
+                  return (
+                    <div key={r.team} className="bg-ink-950/40 border border-ink-800 rounded-lg p-3">
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-2 text-ink-100 text-sm">
+                          <Flag country={r.team} />
+                          <span className="font-medium truncate">{r.team}</span>
+                        </div>
+                        <span className="text-lg font-black text-white tabular-nums">
+                          {pctAbroad}<span className="text-xs text-ink-400">% abroad</span>
+                        </span>
+                      </div>
+                      {/* Three-segment bar: green domestic, brand abroad, muted unknown */}
+                      <div className="h-1.5 flex rounded overflow-hidden bg-ink-800">
+                        {r.domestic > 0 && (
+                          <div
+                            className="bg-emerald-500/70"
+                            style={{ width: `${(100 * r.domestic) / r.total}%` }}
+                            title={`Domestic: ${r.domestic}`}
+                          />
+                        )}
+                        {r.abroad > 0 && (
+                          <div
+                            className="bg-brand-500/80"
+                            style={{ width: `${(100 * r.abroad) / r.total}%` }}
+                            title={`Abroad: ${r.abroad}`}
+                          />
+                        )}
+                        {r.unknown > 0 && (
+                          <div
+                            className="bg-ink-600/60"
+                            style={{ width: `${(100 * r.unknown) / r.total}%` }}
+                            title={`Unknown: ${r.unknown}`}
+                          />
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between gap-2 text-[10px] text-ink-500 mt-1.5 font-mono">
+                        <span>
+                          <span className="text-emerald-400">{r.domestic}</span>
+                          <span className="text-ink-600"> dom · </span>
+                          <span className="text-brand-400">{r.abroad}</span>
+                          <span className="text-ink-600"> abroad</span>
+                          {r.unknown > 0 && (
+                            <>
+                              <span className="text-ink-600"> · </span>
+                              <span className="text-ink-500">{r.unknown} unk</span>
+                            </>
+                          )}
+                        </span>
+                        <span className="text-ink-600">of {r.total}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-4 pt-3 border-t border-ink-800/60 text-[10px] font-mono text-ink-500">
+                Derived from <span className="text-brand-400">squad[i].club.country</span> on{' '}
+                <span className="text-brand-400">GET /tournaments/{meta.year}</span>
+              </div>
+            </div>
+          </section>
+        );
+      })()}
+
       <section className="max-w-7xl mx-auto px-6 py-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
         {topScorers.length > 0 && (
           <div className="bg-ink-900 border border-ink-800 rounded-2xl p-5">

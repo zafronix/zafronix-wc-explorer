@@ -24,7 +24,7 @@ import { listTournaments, getAggregatePlayers, getTournament } from '@/lib/wc-ap
 import { Donut, SERIES_COLORS, BarSeries } from '@/components/charts/Charts';
 import { Flag } from '@/components/Flag';
 import { PlayersTable, type PlayerRow } from '@/components/PlayersTable';
-import { groupYearsByDecade, decadeShort } from '@/lib/year-groups';
+import { TournamentSelector } from '@/components/TournamentSelector';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,7 +36,7 @@ export const metadata: Metadata = {
 };
 
 interface PageProps {
-  searchParams: Promise<{ years?: string }>;
+  searchParams: Promise<{ year?: string; years?: string; hemisphere?: string }>;
 }
 
 const POSITIONS = ['GK', 'DF', 'MF', 'FW'] as const;
@@ -108,19 +108,31 @@ export default async function PlayersAnalysisPage({ searchParams }: PageProps) {
   const tournaments = await listTournaments();
   const playedYears = tournaments.filter((t) => t.champion).map((t) => t.year);
 
-  // Default: ALL years. The user explicitly asked for this — toggling
-  // years on the picker narrows the window; clearing the selection
-  // (or visiting without ?years=) shows all-time. The previous default
-  // ("last played tournament only") was confusing because the chip
-  // showed one year highlighted while the API only had data for that
-  // one year. Now default = no selection = all years, picker chips
-  // are click-to-include.
-  const requested = sp.years
-    ? sp.years.split(',').map((y) => Number(y.trim())).filter((y) => playedYears.includes(y))
-    : [];
-  const years = requested;       // empty = "all years" to the picker UI
-  const yearsForFetch = requested.length > 0 ? requested : undefined;
-  const agg = await getAggregatePlayers(yearsForFetch);
+  // Single-year selection — matches the picker style used everywhere
+  // else (only /compare is multi-select). `?year=YYYY` narrows to one
+  // tournament; absent = all-time aggregation. Legacy `?years=Y1,Y2`
+  // is honored for back-compat from old bookmarks: we take the first
+  // year in the list and ignore the rest, redirecting via a hidden
+  // canonical link wouldn't help since the data fetch is happening
+  // server-side already.
+  const fromYearParam = sp.year ? Number(sp.year) : NaN;
+  const fromYearsParam = sp.years
+    ? Number(sp.years.split(',')[0]?.trim())
+    : NaN;
+  const requestedYear = [fromYearParam, fromYearsParam].find(
+    (y) => Number.isFinite(y) && playedYears.includes(y as number),
+  ) as number | undefined;
+  const yearsForFetch = requestedYear ? [requestedYear] : undefined;
+  const years = requestedYear ? [requestedYear] : []; // empty = "all years"
+  // Hemisphere filter — birth-month distribution is sensitive to the
+  // hemisphere of a team's domestic football calendar (Relative Age
+  // Effect cutoff differs N vs S). Aggregating both flattens the
+  // curve; filtering reveals it. Caveat: uses team-country hemisphere,
+  // not player-birth-country (we don't track birth-country in the
+  // dataset). Naturalized players are a <10% smudge on the signal.
+  const hemisphereParam: 'N' | 'S' | undefined =
+    sp.hemisphere === 'N' || sp.hemisphere === 'S' ? sp.hemisphere : undefined;
+  const agg = await getAggregatePlayers(yearsForFetch, hemisphereParam);
 
   // Pull full squads for the visible window (or every played
   // tournament when no filter is set) so the All Players table can
@@ -236,7 +248,23 @@ export default async function PlayersAnalysisPage({ searchParams }: PageProps) {
             on the modal month or as outliers?
           </p>
 
-          <YearPicker years={years} allYears={playedYears} />
+          <TournamentSelector
+            years={[...playedYears].sort((a, b) => a - b)}
+            playedYears={playedYears}
+            activeYear={requestedYear ?? null}
+            buildHref={(y) => {
+              const params = new URLSearchParams({ year: String(y) });
+              if (hemisphereParam) params.set('hemisphere', hemisphereParam);
+              return `/players/?${params.toString()}`;
+            }}
+            label="Tournament (single-year)"
+          />
+
+          {/* Hemisphere filter — see the page-level comment above. School-
+              year cutoffs for football academies differ N vs S, so the
+              Relative Age Effect (Q1-birthday bias) shows up on different
+              months. Aggregating both flattens the signal. */}
+          <HemisphereFilter active={hemisphereParam ?? null} years={years} />
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-8">
             <Stat label="Players in window" value={totalPlayers.toLocaleString()} />
@@ -584,45 +612,66 @@ function BirthMonthChart({
   );
 }
 
-// ─── Year picker ─────────────────────────────────────────────────────
+// ─── Hemisphere filter ───────────────────────────────────────────────
+//
+// Toggle which teams contribute to the rollups by hemisphere. The
+// filter is a passthrough to the wc-api `/aggregates/players?
+// hemisphere=N|S` query param. We preserve the years[] selection so
+// the operator can switch hemispheres mid-window.
+//
+// Why this exists: birth-month distribution is sensitive to the
+// hemisphere of a player's domestic football calendar. School-year
+// cutoffs differ N vs S, so the Relative Age Effect (Q1-birthday
+// bias in academy systems) lands on different months. Combining the
+// two hides the signal.
 
-function YearPicker({ years, allYears }: { years: number[]; allYears: number[] }) {
-  const isActive = (y: number) => years.includes(y);
-  // Build URLs that toggle one year on/off in the selection.
-  function urlWith(y: number) {
-    const next = isActive(y) ? years.filter((v) => v !== y) : [...years, y].sort();
-    if (next.length === 0) return '/players/';
-    return `/players/?years=${next.join(',')}`;
+function HemisphereFilter({
+  active, years,
+}: {
+  active: 'N' | 'S' | null;
+  years: number[];
+}) {
+  function urlWith(hemi: 'N' | 'S' | null): string {
+    const params = new URLSearchParams();
+    // Single-year mode: the picker passes years=[oneYear]. Use ?year=
+    // (canonical, matches the rest of the site); back-compat for
+    // ?years= happens at the page level.
+    if (years.length > 0) params.set('year', String(years[0]));
+    if (hemi) params.set('hemisphere', hemi);
+    return `/players/${params.toString() ? `?${params.toString()}` : ''}`;
   }
+  const OPTIONS: Array<{ key: 'all' | 'N' | 'S'; label: string; hint: string }> = [
+    { key: 'all', label: 'All players',  hint: 'every nation' },
+    { key: 'N',   label: 'Northern',     hint: 'CONCACAF + UEFA + AFC + most CAF' },
+    { key: 'S',   label: 'Southern',     hint: 'CONMEBOL + OFC + sub-Saharan' },
+  ];
   return (
-    <div className="mt-6">
+    <div className="mt-5">
       <div className="text-[10px] uppercase tracking-widest text-ink-300 mb-2">
-        Tournament window — click to toggle
+        Hemisphere filter
+        <span className="text-ink-500 font-normal normal-case ml-2 lowercase tracking-normal">
+          team country&apos;s hemisphere
+        </span>
       </div>
-      <div className="flex flex-wrap gap-x-4 gap-y-2">
-        {/* Decade-grouped, chronological. */}
-        {groupYearsByDecade(allYears).map((g) => (
-          <div key={g.decade}>
-            <div className="text-[9px] uppercase tracking-widest text-ink-500 mb-1 font-mono">
-              {decadeShort(g.decade)}
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {g.years.map((y) => (
-                <Link
-                  key={y}
-                  href={urlWith(y)}
-                  className={`px-2.5 py-1 rounded text-[11px] font-mono ${
-                    isActive(y)
-                      ? 'bg-brand-600/30 border border-brand-500 text-brand-200'
-                      : 'bg-ink-800 border border-ink-700 text-ink-400 hover:text-ink-100'
-                  }`}
-                >
-                  {y}
-                </Link>
-              ))}
-            </div>
-          </div>
-        ))}
+      <div className="flex flex-wrap gap-2">
+        {OPTIONS.map((opt) => {
+          const isActive = (opt.key === 'all' && !active) || opt.key === active;
+          const href = urlWith(opt.key === 'all' ? null : opt.key);
+          return (
+            <Link
+              key={opt.key}
+              href={href}
+              className={`inline-flex flex-col px-3 py-1.5 rounded-md text-xs ${
+                isActive
+                  ? 'bg-brand-600/30 border border-brand-500 text-brand-100'
+                  : 'bg-ink-800 border border-ink-700 text-ink-300 hover:text-ink-100'
+              }`}
+            >
+              <span className="font-semibold">{opt.label}</span>
+              <span className="text-[9px] text-ink-500 mt-0.5">{opt.hint}</span>
+            </Link>
+          );
+        })}
       </div>
     </div>
   );

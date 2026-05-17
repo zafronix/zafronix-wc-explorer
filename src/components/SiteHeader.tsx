@@ -21,7 +21,9 @@ const NAV_LINKS: Array<{ href: string; label: string; external?: boolean }> = [
   { href: '/compare/',  label: 'Compare' },
   { href: '/teams/',    label: 'Teams' },
   { href: '/players/',  label: 'Players' },
+  { href: '/matches/',  label: 'Matches' },
   { href: '/stadiums/', label: 'Stadiums' },
+  { href: '/referees/', label: 'Referees' },
   { href: 'https://api.zafronix.com/docs', label: 'API docs', external: true },
 ];
 
@@ -30,6 +32,35 @@ export function SiteHeader() {
 
   return (
     <header className="border-b border-ink-800 bg-ink-950/80 backdrop-blur-md sticky top-0 z-40">
+      {/* API framing strip — pinned above the main nav so every page,
+          no matter how deep, makes clear that wc-explorer is a demo of
+          the underlying API. One click to signup, one click to docs.
+          Slimmer than a real banner so it doesn't compete with the main
+          chrome. */}
+      <div className="border-b border-ink-800/60 bg-gradient-to-r from-brand-900/30 via-ink-950 to-brand-900/30">
+        <div className="max-w-7xl mx-auto px-6 py-1.5 flex items-center justify-between gap-3 text-[11px]">
+          <span className="text-ink-300 truncate">
+            <span className="text-brand-400 font-semibold">Built on the Zafronix WC API</span>
+            <span className="text-ink-500 hidden sm:inline"> — everything on this page is one HTTP call away.</span>
+          </span>
+          <span className="flex items-center gap-3 flex-shrink-0">
+            <a
+              href="https://api.zafronix.com/signup"
+              className="text-brand-300 hover:text-brand-200 font-semibold whitespace-nowrap"
+            >
+              Get a free key →
+            </a>
+            <span className="text-ink-700 hidden sm:inline">·</span>
+            <a
+              href="https://api.zafronix.com/docs"
+              className="text-ink-400 hover:text-ink-200 hidden sm:inline whitespace-nowrap"
+            >
+              Read the docs
+            </a>
+          </span>
+        </div>
+      </div>
+
       <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between gap-3">
         {/* Logo + desktop nav */}
         <div className="flex items-center gap-8 min-w-0">
