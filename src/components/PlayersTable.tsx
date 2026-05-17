@@ -24,6 +24,19 @@ const POSITION_COLORS: Record<string, string> = {
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
+/**
+ * Southern-hemisphere national teams. Duplicates the same set in
+ * src/app/players/page.tsx so the table can offer a hemisphere
+ * dropdown independent of the page-level URL filter. If you edit
+ * one, edit the other.
+ */
+const SOUTH_HEMISPHERE_TEAMS = new Set<string>([
+  'Argentina', 'Brazil', 'Bolivia', 'Chile', 'Paraguay', 'Peru', 'Uruguay',
+  'Angola', 'Cameroon', 'Congo DR', 'Mozambique', 'Namibia', 'South Africa',
+  'Tanzania', 'Zambia', 'Zimbabwe',
+  'Australia', 'New Zealand', 'Indonesia', 'Papua New Guinea',
+]);
+
 export interface PlayerRow {
   name:           string;
   team:           string;
@@ -42,14 +55,30 @@ interface Props {
   /** Cap the visible rows (the filter usually narrows it enough that
    *  this matters mostly for the unfiltered "All players" case). */
   pageSize?: number;
+  /** Initial value for the in-table hemisphere dropdown. Lets the
+   *  /players page URL filter (`?hemisphere=N|S`) seed this control
+   *  so the table state mirrors what the operator picked in the
+   *  hero. Defaults to '' (no hemisphere filter). */
+  defaultHemisphere?: 'N' | 'S' | '';
+  /** When false, hide the hemisphere control entirely. Used for the
+   *  GOATs reference table where the curated list is global by
+   *  design. */
+  showHemisphere?: boolean;
 }
 
-export function PlayersTable({ players, noun = 'players', pageSize = 100 }: Props) {
+export function PlayersTable({
+  players,
+  noun = 'players',
+  pageSize = 100,
+  defaultHemisphere = '',
+  showHemisphere = true,
+}: Props) {
   const [name, setName]         = useState('');
   const [country, setCountry]   = useState('');
   const [position, setPosition] = useState('');
   const [birthYear, setBirthYear] = useState('');
   const [birthMonth, setBirthMonth] = useState('');
+  const [hemisphere, setHemisphere] = useState<'N' | 'S' | ''>(defaultHemisphere);
   const [showAll, setShowAll]   = useState(false);
 
   // Country + birth-year option lists derived from the data so we
@@ -78,16 +107,21 @@ export function PlayersTable({ players, noun = 'players', pageSize = 100 }: Prop
       if (position && p.position !== position) return false;
       if (birthYear && (!p.dob || p.dob.slice(0, 4) !== birthYear)) return false;
       if (birthMonth && (!p.dob || p.dob.slice(5, 7) !== birthMonth)) return false;
+      if (hemisphere) {
+        const isSouth = SOUTH_HEMISPHERE_TEAMS.has(p.team);
+        if (hemisphere === 'S' && !isSouth) return false;
+        if (hemisphere === 'N' &&  isSouth) return false;
+      }
       return true;
     });
-  }, [players, name, country, position, birthYear, birthMonth]);
+  }, [players, name, country, position, birthYear, birthMonth, hemisphere]);
 
   const visible = showAll ? filtered : filtered.slice(0, pageSize);
   const truncated = filtered.length > visible.length;
 
-  const filterActive = !!(name || country || position || birthYear || birthMonth);
+  const filterActive = !!(name || country || position || birthYear || birthMonth || hemisphere);
   const reset = () => {
-    setName(''); setCountry(''); setPosition(''); setBirthYear(''); setBirthMonth('');
+    setName(''); setCountry(''); setPosition(''); setBirthYear(''); setBirthMonth(''); setHemisphere('');
   };
 
   return (
@@ -152,6 +186,20 @@ export function PlayersTable({ players, noun = 'players', pageSize = 100 }: Prop
             ))}
           </select>
         </FilterField>
+
+        {showHemisphere && (
+          <FilterField label="Hemisphere">
+            <select
+              value={hemisphere}
+              onChange={(e) => setHemisphere(e.target.value as 'N' | 'S' | '')}
+              className="bg-ink-950 border border-ink-700 rounded-md px-2 py-1.5 text-sm text-white w-32 focus:outline-none focus:border-brand-400"
+            >
+              <option value="">All</option>
+              <option value="N">Northern</option>
+              <option value="S">Southern</option>
+            </select>
+          </FilterField>
+        )}
 
         <div className="ml-auto flex items-center gap-2">
           {filterActive && (

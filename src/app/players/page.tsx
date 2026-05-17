@@ -410,7 +410,12 @@ export default async function PlayersAnalysisPage({ searchParams }: PageProps) {
           Search by name or filter by country, position, birth year or birth month. The C badge
           marks captains. Change the hemisphere filter in the hero above.
         </p>
-        <PlayersTable players={allPlayers} noun="players" pageSize={100} />
+        <PlayersTable
+          players={allPlayers}
+          noun="players"
+          pageSize={100}
+          defaultHemisphere={hemisphereParam ?? ''}
+        />
       </section>
 
       {/* GOAT reference — same table, filtered to the curated list.
@@ -423,7 +428,7 @@ export default async function PlayersAnalysisPage({ searchParams }: PageProps) {
           Curated. Inclusion in this list isn&apos;t a championship ranking — it&apos;s a span of Ballon-d&apos;Or
           winners + nominees + commonly-cited GOATs across eras, used for the overlay above.
         </p>
-        <PlayersTable players={goatRows} noun="GOATs" pageSize={50} />
+        <PlayersTable players={goatRows} noun="GOATs" pageSize={50} showHemisphere={false} />
       </section>
 
       {/* Hat-tricks leaderboard — every 3+ goal individual performance
