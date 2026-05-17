@@ -672,7 +672,7 @@ export default async function TeamsPage({ searchParams }: PageProps) {
             return (
               <form
                 method="get"
-                action="/teams/#all-teams"
+                action="/wc-explorer/teams/#all-teams"
                 className="px-5 py-3 border-b border-ink-800/60 bg-ink-900/40 flex flex-wrap items-end gap-3 text-xs"
               >
                 <label className="flex flex-col gap-1 min-w-[180px]">
@@ -707,7 +707,7 @@ export default async function TeamsPage({ searchParams }: PageProps) {
                   </button>
                   {anyActive && (
                     <a
-                      href="/teams/#all-teams"
+                      href="/wc-explorer/teams/#all-teams"
                       className="text-[10px] uppercase tracking-widest font-semibold border border-ink-700 hover:border-ink-500 text-ink-300 hover:text-ink-100 rounded px-3 py-1.5 transition-colors"
                     >
                       Clear

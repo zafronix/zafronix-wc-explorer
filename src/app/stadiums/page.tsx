@@ -566,7 +566,7 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
             return (
               <form
                 method="get"
-                action="/stadiums/#all-venues"
+                action="/wc-explorer/stadiums/#all-venues"
                 className="px-5 py-3 border-b border-ink-800/60 bg-ink-900/40 flex flex-wrap items-end gap-3 text-xs"
               >
                 {requestedYear && <input type="hidden" name="year" value={requestedYear} />}
@@ -603,7 +603,7 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
                   </button>
                   {anyActive && (
                     <a
-                      href={`/stadiums/?${preservedYear.slice(1)}${preservedSort}#all-venues`.replace(/^\?$/, '/stadiums/#all-venues').replace('?#', '#')}
+                      href={`/wc-explorer/stadiums/?${preservedYear.slice(1)}${preservedSort}#all-venues`.replace(/^\?$/, '/wc-explorer/stadiums/#all-venues').replace('?#', '#')}
                       className="text-[10px] uppercase tracking-widest font-semibold border border-ink-700 hover:border-ink-500 text-ink-300 hover:text-ink-100 rounded px-3 py-1.5 transition-colors"
                     >
                       Clear

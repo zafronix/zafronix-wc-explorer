@@ -49,28 +49,35 @@ interface PageProps {
      *  year/stage on the leaderboard. */
     country?: string;
     /** Filter to refs/countries who officiated at this stage. Values:
-     *  group, round_of_32, round_of_16, quarter_final, semi_final,
-     *  third_place, final. */
+     *  group, r32, r16, qf, sf, thirdPlace, final. */
     stage?: string;
   }>;
 }
 
 // ─── Stage helpers ──────────────────────────────────────────────────
+//
+// The wc-api emits per-stage counts using SHORT stage codes that
+// match the canonical match.stage values in the dataset:
+//   group_a..group_l, r32, r16, qf, sf, thirdPlace, final.
+//
+// We collapse all the group_* keys into a single 'group' bucket for
+// display, but otherwise keep the same naming the API uses so the
+// column lookups don't silently miss values.
 const STAGE_ORDER: Array<{ key: string; label: string; isKo: boolean }> = [
-  { key: 'group',         label: 'Group',  isKo: false },
-  { key: 'round_of_32',   label: 'R32',    isKo: true },
-  { key: 'round_of_16',   label: 'R16',    isKo: true },
-  { key: 'quarter_final', label: 'QF',     isKo: true },
-  { key: 'semi_final',    label: 'SF',     isKo: true },
-  { key: 'third_place',   label: '3rd',    isKo: true },
-  { key: 'final',         label: 'F',      isKo: true },
+  { key: 'group',      label: 'Group',  isKo: false },
+  { key: 'r32',        label: 'R32',    isKo: true },
+  { key: 'r16',        label: 'R16',    isKo: true },
+  { key: 'qf',         label: 'QF',     isKo: true },
+  { key: 'sf',         label: 'SF',     isKo: true },
+  { key: 'thirdPlace', label: '3rd',    isKo: true },
+  { key: 'final',      label: 'F',      isKo: true },
 ];
 
 /** Sum a single referee's per-stage counts into the canonical bucket
  *  set. Group stages span group_a..group_l; collapse all of those
- *  into a single "group" bucket. KO codes match the keys directly. */
+ *  into a single 'group' bucket. KO codes match the API directly. */
 function bucketsForRef(byStage: Record<string, number>): Record<string, number> {
-  const out: Record<string, number> = { group: 0, round_of_32: 0, round_of_16: 0, quarter_final: 0, semi_final: 0, third_place: 0, final: 0 };
+  const out: Record<string, number> = { group: 0, r32: 0, r16: 0, qf: 0, sf: 0, thirdPlace: 0, final: 0 };
   for (const [k, v] of Object.entries(byStage)) {
     if (k.startsWith('group_')) out.group += v;
     else if (k in out) out[k] += v;
@@ -144,7 +151,7 @@ export default async function RefereesPage({ searchParams }: PageProps) {
     if (!c) continue;
     let agg = countryStats.get(c);
     if (!agg) {
-      agg = { matches: 0, refs: 0, byStage: { group: 0, round_of_32: 0, round_of_16: 0, quarter_final: 0, semi_final: 0, third_place: 0, final: 0 } };
+      agg = { matches: 0, refs: 0, byStage: { group: 0, r32: 0, r16: 0, qf: 0, sf: 0, thirdPlace: 0, final: 0 } };
       countryStats.set(c, agg);
     }
     agg.matches += r.totalMatches;
@@ -440,15 +447,15 @@ export default async function RefereesPage({ searchParams }: PageProps) {
                     .slice()
                     .sort((a, b) => b.totalMatches - a.totalMatches || a.name.localeCompare(b.name))
                     .map((r, i) => {
-                      const koKeys = ['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'third_place', 'final'];
+                      const koKeys = ['r32', 'r16', 'qf', 'sf', 'thirdPlace', 'final'];
                       const koTotal = koKeys.reduce((s, k) => s + (r.byStage[k] ?? 0), 0);
                       const koList: Array<{ k: string; n: number; label: string }> = [
-                        { k: 'final',         n: r.byStage.final         ?? 0, label: 'F'   },
-                        { k: 'third_place',   n: r.byStage.third_place   ?? 0, label: '3rd' },
-                        { k: 'semi_final',    n: r.byStage.semi_final    ?? 0, label: 'SF'  },
-                        { k: 'quarter_final', n: r.byStage.quarter_final ?? 0, label: 'QF'  },
-                        { k: 'round_of_16',   n: r.byStage.round_of_16   ?? 0, label: 'R16' },
-                        { k: 'round_of_32',   n: r.byStage.round_of_32   ?? 0, label: 'R32' },
+                        { k: 'final',      n: r.byStage.final      ?? 0, label: 'F'   },
+                        { k: 'thirdPlace', n: r.byStage.thirdPlace ?? 0, label: '3rd' },
+                        { k: 'sf',         n: r.byStage.sf         ?? 0, label: 'SF'  },
+                        { k: 'qf',         n: r.byStage.qf         ?? 0, label: 'QF'  },
+                        { k: 'r16',        n: r.byStage.r16        ?? 0, label: 'R16' },
+                        { k: 'r32',        n: r.byStage.r32        ?? 0, label: 'R32' },
                       ].filter((x) => x.n > 0);
                       return (
                         <tr key={r.id} className="border-t border-ink-800/60 hover:bg-ink-800/30">
@@ -482,7 +489,7 @@ export default async function RefereesPage({ searchParams }: PageProps) {
                                     className={`inline-block text-[10px] font-mono px-1.5 py-0.5 rounded border ${
                                       k === 'final'
                                         ? 'bg-accent-gold/15 text-accent-gold border-accent-gold/40'
-                                        : k === 'semi_final' || k === 'third_place'
+                                        : k === 'sf' || k === 'thirdPlace'
                                           ? 'bg-brand-500/15 text-brand-300 border-brand-500/40'
                                           : 'bg-ink-700/40 text-ink-300 border-ink-700'
                                     }`}
@@ -542,11 +549,11 @@ function RefereeFilterBar({
   const anchor = context === 'leaderboard' ? '#leaderboard' : '#country-stage';
   // Build a "clear filters" URL that keeps the year but drops the
   // rest. When no year is active, lands back at the bare /referees/.
-  const clearHref = activeYear ? `/referees/?year=${activeYear}${anchor}` : `/referees/${anchor}`;
+  const clearHref = activeYear ? `/wc-explorer/referees/?year=${activeYear}${anchor}` : `/wc-explorer/referees/${anchor}`;
   return (
     <form
       method="get"
-      action={`/referees/${anchor}`}
+      action={`/wc-explorer/referees/${anchor}`}
       className="px-5 py-3 border-b border-ink-800/60 bg-ink-900/40 flex flex-wrap items-end gap-3 text-xs"
     >
       {/* Preserve year across filter changes */}
@@ -588,11 +595,11 @@ function RefereeFilterBar({
         >
           <option value="">All stages</option>
           <option value="group">Group stage</option>
-          <option value="round_of_32">Round of 32</option>
-          <option value="round_of_16">Round of 16</option>
-          <option value="quarter_final">Quarterfinal</option>
-          <option value="semi_final">Semifinal</option>
-          <option value="third_place">Third-place playoff</option>
+          <option value="r32">Round of 32</option>
+          <option value="r16">Round of 16</option>
+          <option value="qf">Quarterfinal</option>
+          <option value="sf">Semifinal</option>
+          <option value="thirdPlace">Third-place playoff</option>
           <option value="final">Final</option>
         </select>
       </label>
