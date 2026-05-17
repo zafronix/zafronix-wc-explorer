@@ -35,12 +35,25 @@ export const metadata: Metadata = {
 };
 
 interface PageProps {
-  searchParams: Promise<{ sort?: string; year?: string; years?: string }>;
+  searchParams: Promise<{
+    sort?: string;
+    year?: string;
+    years?: string;
+    /** Substring filter on stadium name OR city (case-insensitive). */
+    name?: string;
+    /** Filter to a single host country (exact match from the dropdown). */
+    country?: string;
+  }>;
 }
 
 export default async function StadiumsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const sort = sp.sort ?? 'tournaments';
+  // Local table filters — orthogonal to the year-picker filter
+  // above. Name filter matches stadium name OR city; country is
+  // exact-match from a dropdown of every country in the dataset.
+  const nameFilter    = (sp.name    ?? '').trim().toLowerCase();
+  const countryFilter = (sp.country ?? '').trim();
 
   const [allStadiums, tournaments] = await Promise.all([
     listStadiums(),
@@ -529,7 +542,7 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
       )}
 
       {/* Big table */}
-      <section className="max-w-7xl mx-auto px-6 py-10">
+      <section id="all-venues" className="max-w-7xl mx-auto px-6 py-10 scroll-mt-20">
         <div className="flex items-baseline justify-between mb-4 flex-wrap gap-3">
           <h2 className="text-2xl font-bold">All venues</h2>
           <div className="flex items-center gap-1 text-xs">
@@ -542,6 +555,64 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
           </div>
         </div>
         <div className="bg-ink-900 border border-ink-800 rounded-xl overflow-hidden">
+          {/* Filter bar — stadium name/city + host country. Same
+              URL-driven form pattern as the referees + teams pages.
+              Preserves sort + year params. */}
+          {(() => {
+            const allCountries = [...new Set(allStadiums.map((s) => s.country).filter(Boolean))].sort();
+            const anyActive = !!(nameFilter || countryFilter);
+            const preservedYear = requestedYear ? `&year=${requestedYear}` : '';
+            const preservedSort = sort !== 'tournaments' ? `&sort=${sort}` : '';
+            return (
+              <form
+                method="get"
+                action="/stadiums/#all-venues"
+                className="px-5 py-3 border-b border-ink-800/60 bg-ink-900/40 flex flex-wrap items-end gap-3 text-xs"
+              >
+                {requestedYear && <input type="hidden" name="year" value={requestedYear} />}
+                {sort !== 'tournaments' && <input type="hidden" name="sort" value={sort} />}
+                <label className="flex flex-col gap-1 min-w-[180px]">
+                  <span className="text-[9px] uppercase tracking-widest text-ink-400">Stadium / city contains</span>
+                  <input
+                    type="text"
+                    name="name"
+                    defaultValue={nameFilter}
+                    placeholder="e.g. azteca"
+                    className="bg-ink-800 border border-ink-700 rounded px-2 py-1 text-ink-100 placeholder:text-ink-600 focus:border-brand-500 outline-none"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 min-w-[160px]">
+                  <span className="text-[9px] uppercase tracking-widest text-ink-400">Country</span>
+                  <select
+                    name="country"
+                    defaultValue={countryFilter}
+                    className="bg-ink-800 border border-ink-700 rounded px-2 py-1 text-ink-100 focus:border-brand-500 outline-none"
+                  >
+                    <option value="">All countries</option>
+                    {allCountries.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </label>
+                <div className="flex items-center gap-2 ml-auto">
+                  <button
+                    type="submit"
+                    className="text-[10px] uppercase tracking-widest font-semibold bg-brand-600 hover:bg-brand-500 text-white rounded px-3 py-1.5 transition-colors"
+                  >
+                    Apply
+                  </button>
+                  {anyActive && (
+                    <a
+                      href={`/stadiums/?${preservedYear.slice(1)}${preservedSort}#all-venues`.replace(/^\?$/, '/stadiums/#all-venues').replace('?#', '#')}
+                      className="text-[10px] uppercase tracking-widest font-semibold border border-ink-700 hover:border-ink-500 text-ink-300 hover:text-ink-100 rounded px-3 py-1.5 transition-colors"
+                    >
+                      Clear
+                    </a>
+                  )}
+                </div>
+              </form>
+            );
+          })()}
           <table className="w-full text-sm">
             <thead className="bg-ink-800/60 text-left text-[10px] uppercase tracking-widest text-ink-300">
               <tr>
@@ -554,7 +625,22 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
               </tr>
             </thead>
             <tbody>
-              {sorted.map((s) => (
+              {(() => {
+                const filtered = sorted.filter((s) => {
+                  if (nameFilter && !(s.name.toLowerCase().includes(nameFilter) || (s.city ?? '').toLowerCase().includes(nameFilter))) return false;
+                  if (countryFilter && s.country !== countryFilter) return false;
+                  return true;
+                });
+                if (filtered.length === 0) {
+                  return (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-10 text-center text-ink-400">
+                        No venues match the active filters.
+                      </td>
+                    </tr>
+                  );
+                }
+                return filtered.map((s) => (
                 <tr key={s.id} className="border-t border-ink-800/60 hover:bg-ink-800/30">
                   <td className="px-4 py-2.5">
                     <div className="font-semibold text-white truncate">{s.name}</div>
@@ -585,9 +671,26 @@ export default async function StadiumsPage({ searchParams }: PageProps) {
                       : s.tournaments.join(', ')}
                   </td>
                 </tr>
-              ))}
+                ));
+              })()}
             </tbody>
           </table>
+          {(nameFilter || countryFilter) && (
+            <div className="px-4 py-2 border-t border-ink-800 text-[10px] font-mono text-ink-500 flex items-center justify-between flex-wrap gap-2">
+              <span>
+                <span className="text-brand-400">GET /stadiums</span>
+                {nameFilter    && <span> · name~{nameFilter}</span>}
+                {countryFilter && <span> · country={countryFilter}</span>}
+              </span>
+              <span>
+                {sorted.filter((s) => {
+                  if (nameFilter && !(s.name.toLowerCase().includes(nameFilter) || (s.city ?? '').toLowerCase().includes(nameFilter))) return false;
+                  if (countryFilter && s.country !== countryFilter) return false;
+                  return true;
+                }).length} of {sorted.length} venues
+              </span>
+            </div>
+          )}
         </div>
       </section>
     </>

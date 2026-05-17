@@ -55,6 +55,27 @@ const POSITION_COLORS: Record<Position, string> = {
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
+/** Southern-hemisphere national teams. Mirrors the same set in the
+ *  wc-api's src/routes/aggregates.ts so the explorer's local filter
+ *  agrees with the aggregator's rollups. Used by:
+ *
+ *    - the hemisphere filter chip in the hero (passed to the API)
+ *    - the All-Players table below (filtered locally)
+ *
+ *  Naturalized players are misclassified by this proxy (team-country
+ *  ≠ player-birth-country in ~10% of modern squads). Acceptable
+ *  noise for the Relative Age Effect story this filter supports;
+ *  not acceptable for citizenship-themed analyses. */
+const SOUTH_HEMISPHERE_TEAMS = new Set<string>([
+  // CONMEBOL
+  'Argentina', 'Brazil', 'Bolivia', 'Chile', 'Paraguay', 'Peru', 'Uruguay',
+  // Africa south of equator
+  'Angola', 'Cameroon', 'Congo DR', 'Mozambique', 'Namibia', 'South Africa',
+  'Tanzania', 'Zambia', 'Zimbabwe',
+  // OFC + Oceania
+  'Australia', 'New Zealand', 'Indonesia', 'Papua New Guinea',
+]);
+
 /**
  * Curated GOAT / Ballon-d'Or-era pinning list. DOBs sourced from
  * Wikipedia / FIFA records; pos is the position they're best known
@@ -173,10 +194,20 @@ export default async function PlayersAnalysisPage({ searchParams }: PageProps) {
       }
     }
   }
-  const allPlayers: PlayerRow[] = Array.from(playerByKey.values()).map((r) => ({
-    ...r,
-    years: [...r.years].sort((a, b) => a - b),
-  }));
+  const allPlayers: PlayerRow[] = Array.from(playerByKey.values())
+    .map((r) => ({
+      ...r,
+      years: [...r.years].sort((a, b) => a - b),
+    }))
+    // Apply the hemisphere filter to the All-Players table too. The
+    // filter chip in the hero feeds the aggregator above; we mirror
+    // it here so the table the operator scrolls also reflects the
+    // chosen hemisphere. Caveat lives in HEMISPHERE comment.
+    .filter((p) => {
+      if (!hemisphereParam) return true;
+      const isSouth = SOUTH_HEMISPHERE_TEAMS.has(p.team);
+      return hemisphereParam === 'S' ? isSouth : !isSouth;
+    });
   // Sort: most goals first, then most appearances, then name.
   allPlayers.sort((a, b) =>
     b.goals - a.goals
@@ -365,11 +396,19 @@ export default async function PlayersAnalysisPage({ searchParams }: PageProps) {
           birth year, birth month. Caps at 100 rows by default with a
           "show all" expand. */}
       <section className="max-w-7xl mx-auto px-6 pb-8">
-        <h2 className="text-2xl font-bold mb-2">All players</h2>
+        <h2 className="text-2xl font-bold mb-2">
+          All players
+          {hemisphereParam && (
+            <span className="text-base font-normal text-brand-400 ml-2">
+              · {hemisphereParam === 'N' ? 'Northern hemisphere only' : 'Southern hemisphere only'}
+            </span>
+          )}
+        </h2>
         <p className="text-xs text-ink-500 mb-4">
-          Every player from {years.length === 0 ? 'all played World Cups' : `the ${years.join(', ')} squad${years.length === 1 ? '' : 's'}`}.
+          Every player from {years.length === 0 ? 'all played World Cups' : `the ${years.join(', ')} squad${years.length === 1 ? '' : 's'}`}
+          {hemisphereParam && ` on ${hemisphereParam === 'N' ? 'Northern' : 'Southern'}-hemisphere national teams`}.
           Search by name or filter by country, position, birth year or birth month. The C badge
-          marks captains.
+          marks captains. Change the hemisphere filter in the hero above.
         </p>
         <PlayersTable players={allPlayers} noun="players" pageSize={100} />
       </section>

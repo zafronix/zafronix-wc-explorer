@@ -55,7 +55,19 @@ interface TeamRecord {
   bestFinishYears: number[];
 }
 
-export default async function TeamsPage() {
+interface PageProps {
+  searchParams: Promise<{
+    /** Substring filter on team name (case-insensitive). */
+    name?: string;
+    /** Filter to a single confederation (UEFA / CONMEBOL / etc.). */
+    confederation?: string;
+  }>;
+}
+
+export default async function TeamsPage({ searchParams }: PageProps) {
+  const sp = await searchParams;
+  const nameFilter   = (sp.name ?? '').trim().toLowerCase();
+  const confedFilter = (sp.confederation ?? '').trim();
   const tournaments = await listTournaments();
   const playedYears = tournaments.filter((t) => t.champion).map((t) => t.year);
 
@@ -648,9 +660,63 @@ export default async function TeamsPage() {
       )}
 
       {/* All teams table */}
-      <section className="max-w-7xl mx-auto px-6 py-10">
+      <section id="all-teams" className="max-w-7xl mx-auto px-6 py-10 scroll-mt-20">
         <h2 className="text-2xl font-bold mb-4">All teams</h2>
         <div className="bg-ink-900 border border-ink-800 rounded-xl overflow-hidden">
+          {/* Filter bar — name (substring, case-insensitive) +
+              confederation (exact match from a static list). Same
+              URL-driven form pattern as the referees page. */}
+          {(() => {
+            const allConfederations = [...new Set(allTeams.map((t) => t.confederation).filter(Boolean))].sort();
+            const anyActive = !!(nameFilter || confedFilter);
+            return (
+              <form
+                method="get"
+                action="/teams/#all-teams"
+                className="px-5 py-3 border-b border-ink-800/60 bg-ink-900/40 flex flex-wrap items-end gap-3 text-xs"
+              >
+                <label className="flex flex-col gap-1 min-w-[180px]">
+                  <span className="text-[9px] uppercase tracking-widest text-ink-400">Team contains</span>
+                  <input
+                    type="text"
+                    name="name"
+                    defaultValue={nameFilter}
+                    placeholder="e.g. brazil"
+                    className="bg-ink-800 border border-ink-700 rounded px-2 py-1 text-ink-100 placeholder:text-ink-600 focus:border-brand-500 outline-none"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 min-w-[160px]">
+                  <span className="text-[9px] uppercase tracking-widest text-ink-400">Confederation</span>
+                  <select
+                    name="confederation"
+                    defaultValue={confedFilter}
+                    className="bg-ink-800 border border-ink-700 rounded px-2 py-1 text-ink-100 focus:border-brand-500 outline-none"
+                  >
+                    <option value="">All confederations</option>
+                    {allConfederations.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </label>
+                <div className="flex items-center gap-2 ml-auto">
+                  <button
+                    type="submit"
+                    className="text-[10px] uppercase tracking-widest font-semibold bg-brand-600 hover:bg-brand-500 text-white rounded px-3 py-1.5 transition-colors"
+                  >
+                    Apply
+                  </button>
+                  {anyActive && (
+                    <a
+                      href="/teams/#all-teams"
+                      className="text-[10px] uppercase tracking-widest font-semibold border border-ink-700 hover:border-ink-500 text-ink-300 hover:text-ink-100 rounded px-3 py-1.5 transition-colors"
+                    >
+                      Clear
+                    </a>
+                  )}
+                </div>
+              </form>
+            );
+          })()}
           <table className="w-full text-sm">
             <thead className="bg-ink-800/60 text-left text-[10px] uppercase tracking-widest text-ink-300">
               <tr>
@@ -663,12 +729,27 @@ export default async function TeamsPage() {
               </tr>
             </thead>
             <tbody>
-              {[...allTeams]
-                .sort((a, b) =>
-                  b.appearances.length - a.appearances.length ||
-                  a.name.localeCompare(b.name),
-                )
-                .map((t) => (
+              {(() => {
+                const filtered = allTeams.filter((t) => {
+                  if (nameFilter && !t.name.toLowerCase().includes(nameFilter)) return false;
+                  if (confedFilter && t.confederation !== confedFilter) return false;
+                  return true;
+                });
+                if (filtered.length === 0) {
+                  return (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-10 text-center text-ink-400">
+                        No teams match the active filters.
+                      </td>
+                    </tr>
+                  );
+                }
+                return filtered
+                  .sort((a, b) =>
+                    b.appearances.length - a.appearances.length ||
+                    a.name.localeCompare(b.name),
+                  )
+                  .map((t) => (
                   <tr key={t.name} className="border-t border-ink-800/60 hover:bg-ink-800/30">
                     <td className="px-4 py-2.5">
                       <span className="inline-flex items-center gap-2">
@@ -689,9 +770,26 @@ export default async function TeamsPage() {
                         : <span className="text-ink-500">—</span>}
                     </td>
                   </tr>
-                ))}
+                ));
+              })()}
             </tbody>
           </table>
+          {(nameFilter || confedFilter) && (
+            <div className="px-4 py-2 border-t border-ink-800 text-[10px] font-mono text-ink-500 flex items-center justify-between flex-wrap gap-2">
+              <span>
+                <span className="text-brand-400">GET /tournaments/&lbrace;year&rbrace; aggregated client-side</span>
+                {nameFilter   && <span> · name~{nameFilter}</span>}
+                {confedFilter && <span> · confederation={confedFilter}</span>}
+              </span>
+              <span>
+                {allTeams.filter((t) => {
+                  if (nameFilter && !t.name.toLowerCase().includes(nameFilter)) return false;
+                  if (confedFilter && t.confederation !== confedFilter) return false;
+                  return true;
+                }).length} of {allTeams.length} teams
+              </span>
+            </div>
+          )}
         </div>
       </section>
     </>

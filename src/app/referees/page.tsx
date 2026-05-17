@@ -41,7 +41,18 @@ export const metadata: Metadata = {
 };
 
 interface PageProps {
-  searchParams: Promise<{ year?: string }>;
+  searchParams: Promise<{
+    year?: string;
+    /** Substring filter on referee name (case-insensitive). */
+    name?: string;
+    /** Filter to refs from this country (exact match). Composes with
+     *  year/stage on the leaderboard. */
+    country?: string;
+    /** Filter to refs/countries who officiated at this stage. Values:
+     *  group, round_of_32, round_of_16, quarter_final, semi_final,
+     *  third_place, final. */
+    stage?: string;
+  }>;
 }
 
 // ─── Stage helpers ──────────────────────────────────────────────────
@@ -78,14 +89,43 @@ export default async function RefereesPage({ searchParams }: PageProps) {
   const yearParam = sp.year ? Number(sp.year) : NaN;
   const requestedYear = Number.isFinite(yearParam) && playedYears.includes(yearParam) ? yearParam : null;
 
-  // Filtered leaderboard set
-  const visibleRefs = requestedYear
-    ? allRefs.filter((r) => r.years.includes(requestedYear))
-    : allRefs;
-  // Stats for the hero
+  // Filter inputs — all optional, all URL-driven so the filter state
+  // is bookmarkable and back/forward works.
+  const nameFilter    = (sp.name    ?? '').trim().toLowerCase();
+  const countryFilter = (sp.country ?? '').trim();
+  const stageFilter   = (sp.stage   ?? '').trim();   // 'group' | 'round_of_X' | etc.
+  const validStage    = STAGE_ORDER.some((s) => s.key === stageFilter) ? stageFilter : '';
+
+  /** True if a ref has ≥1 match at the given stage (single key, or
+   *  the synthetic "group" bucket which spans group_a..group_l). */
+  function refHasStage(r: ApiRefereeSummary, stage: string): boolean {
+    if (!stage) return true;
+    if (stage === 'group') {
+      return Object.keys(r.byStage).some((k) => k.startsWith('group_') && r.byStage[k] > 0);
+    }
+    return (r.byStage[stage] ?? 0) > 0;
+  }
+
+  // Filtered leaderboard set. All filters are AND.
+  const visibleRefs = allRefs.filter((r) => {
+    if (requestedYear && !r.years.includes(requestedYear)) return false;
+    if (nameFilter && !r.name.toLowerCase().includes(nameFilter)) return false;
+    if (countryFilter && r.country !== countryFilter) return false;
+    if (validStage && !refHasStage(r, validStage)) return false;
+    return true;
+  });
+  // Stats for the hero — always reflect the active filter set.
   const totalMatches = visibleRefs.reduce((s, r) => s + r.totalMatches, 0);
   const veterans = allRefs.filter((r) => r.tournaments >= 3);  // always all-time
   const countries = new Set(visibleRefs.map((r) => r.country).filter(Boolean));
+
+  // Distinct values for the filter selects.
+  const allCountries = [...new Set(allRefs.map((r) => r.country).filter((c): c is string => !!c))]
+    .sort((a, b) => a.localeCompare(b));
+
+  // Did the user set any non-year filter? Drives the visibility of
+  // the "clear filters" pill + the empty-state message tone.
+  const anyFilterActive = !!(nameFilter || countryFilter || validStage);
 
   // ─── Chart data (always all-time; year filter doesn't apply) ──
   // Top 10 referees by # of World Cups. Ties broken by total matches.
@@ -95,6 +135,9 @@ export default async function RefereesPage({ searchParams }: PageProps) {
     .map((r) => ({ label: r.name.split(' ').slice(-1)[0]!, value: r.tournaments, host: [r.country ?? ''] }));
 
   // Country aggregation — sum matches + per-stage across every ref.
+  // Always aggregates ALL refs (the country table shows the full
+  // career picture per country); the country/stage filters narrow
+  // which ROWS we display below, not what gets summed.
   const countryStats = new Map<string, { matches: number; refs: number; byStage: Record<string, number> }>();
   for (const r of allRefs) {
     const c = r.country;
@@ -109,11 +152,25 @@ export default async function RefereesPage({ searchParams }: PageProps) {
     const bs = bucketsForRef(r.byStage);
     for (const k of Object.keys(agg.byStage)) agg.byStage[k] += bs[k] ?? 0;
   }
-  const countryRows = [...countryStats.entries()]
+  const allCountryRows = [...countryStats.entries()]
     .map(([country, s]) => ({ country, ...s }))
     .sort((a, b) => b.matches - a.matches);
 
-  const topCountriesByMatches = countryRows.slice(0, 10).map((c) => ({
+  // Apply country/stage filters to the country×stage table — but NOT
+  // the year filter (charts/tables are all-time when no year is
+  // selected; the table is hidden when a year IS selected).
+  const visibleCountryRows = allCountryRows.filter((c) => {
+    if (countryFilter && c.country !== countryFilter) return false;
+    if (validStage && (c.byStage[validStage] ?? 0) === 0) return false;
+    return true;
+  });
+  // When stage is filtered, re-sort by that stage's count descending
+  // so the most-represented countries at that stage float to the top.
+  if (validStage) {
+    visibleCountryRows.sort((a, b) => (b.byStage[validStage] ?? 0) - (a.byStage[validStage] ?? 0));
+  }
+
+  const topCountriesByMatches = allCountryRows.slice(0, 10).map((c) => ({
     label: c.country.length > 14 ? c.country.slice(0, 12) + '…' : c.country,
     value: c.matches,
     host: [c.country],
@@ -208,7 +265,7 @@ export default async function RefereesPage({ searchParams }: PageProps) {
           >
             <BarSeries data={topCountriesByMatches} color={SERIES_COLORS.brand} valueLabel="games" height={260} />
             <ol className="mt-4 space-y-1 text-xs">
-              {countryRows.slice(0, 10).map((c, i) => (
+              {allCountryRows.slice(0, 10).map((c, i) => (
                 <li key={c.country} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-ink-800/40">
                   <span className="text-ink-500 font-mono w-5 text-right tabular-nums">{i + 1}.</span>
                   <Flag country={c.country} />
@@ -222,34 +279,61 @@ export default async function RefereesPage({ searchParams }: PageProps) {
         </section>
       )}
 
-      {/* Country × Stage matrix (always shown — even when year is
-          selected, this is "all-time per-country breakdown" which
-          remains useful context). */}
+      {/* Country × Stage matrix — full list, filterable. Always
+          shown (even when year is selected) since it represents the
+          all-time per-country breakdown which remains useful context. */}
       {!requestedYear && (
-        <section className="max-w-7xl mx-auto px-6 pb-10">
+        <section id="country-stage" className="max-w-7xl mx-auto px-6 pb-10 scroll-mt-20">
           <div className="bg-ink-900 border border-ink-800 rounded-2xl overflow-hidden">
             <header className="px-5 py-3 border-b border-ink-800/60">
               <h2 className="text-sm font-bold text-white">Referee countries by stage</h2>
               <p className="text-[11px] text-ink-400 mt-1">
-                Top 10 countries. Counts of matches officiated at each stage by referees from that
-                country, across every WC. Group = all group-stage matches combined; KO columns
-                separated. Gold-emphasis on final-stage cells.
+                Every country with WC referee history — counts of matches officiated at each stage
+                by referees from that country. Group = all group-stage matches combined; KO columns
+                separated. Gold-emphasis on final-stage cells. Filter by country or stage below;
+                stage filter re-ranks by that stage&apos;s count.
               </p>
             </header>
+            {/* Filter bar — wired to the same searchParams as the
+                leaderboard so a single filter set drives both tables. */}
+            <RefereeFilterBar
+              countries={allCountries}
+              activeCountry={countryFilter}
+              activeStage={validStage}
+              activeName=""  // name filter doesn't apply here
+              activeYear={requestedYear}
+              showName={false}
+              context="country-stage"
+            />
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-ink-800/40 text-left text-[10px] uppercase tracking-widest text-ink-400">
                   <tr>
+                    <th className="px-4 py-2 font-semibold w-8 text-right">#</th>
                     <th className="px-4 py-2 font-semibold">Country</th>
                     {STAGE_ORDER.map((s) => (
-                      <th key={s.key} className="px-3 py-2 font-semibold text-right">{s.label}</th>
+                      <th
+                        key={s.key}
+                        className={`px-3 py-2 font-semibold text-right ${
+                          s.key === validStage ? 'text-brand-300' : ''
+                        }`}
+                      >
+                        {s.label}
+                      </th>
                     ))}
                     <th className="px-4 py-2 font-semibold text-right">Total</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {countryRows.slice(0, 10).map((c) => (
+                  {visibleCountryRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={STAGE_ORDER.length + 3} className="px-4 py-8 text-center text-ink-400">
+                        No countries match the active filters.
+                      </td>
+                    </tr>
+                  ) : visibleCountryRows.map((c, i) => (
                     <tr key={c.country} className="border-t border-ink-800/60 hover:bg-ink-800/30">
+                      <td className="px-4 py-2.5 text-right text-ink-500 font-mono text-xs tabular-nums">{i + 1}</td>
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-2">
                           <Flag country={c.country} />
@@ -260,10 +344,15 @@ export default async function RefereesPage({ searchParams }: PageProps) {
                       {STAGE_ORDER.map((s) => {
                         const n = c.byStage[s.key] ?? 0;
                         const isMarquee = s.key === 'final';
+                        const isActiveStage = s.key === validStage;
                         return (
                           <td
                             key={s.key}
                             className={`px-3 py-2.5 text-right tabular-nums ${
+                              isActiveStage
+                                ? 'bg-brand-500/10'
+                                : ''
+                            } ${
                               n === 0
                                 ? 'text-ink-700'
                                 : isMarquee
@@ -283,25 +372,54 @@ export default async function RefereesPage({ searchParams }: PageProps) {
                 </tbody>
               </table>
             </div>
-            <div className="px-4 py-2 border-t border-ink-800 text-[10px] font-mono text-ink-500">
-              client-side aggregation over <span className="text-brand-400">GET /referees?limit=500</span>
+            <div className="px-4 py-2 border-t border-ink-800 text-[10px] font-mono text-ink-500 flex items-center justify-between gap-2 flex-wrap">
+              <span>
+                <span className="text-brand-400">GET /referees?limit=500</span>
+                {' · client-side aggregation by country'}
+                {(countryFilter || validStage) && (
+                  <span className="text-amber-400">
+                    {' · filtered'}{countryFilter && `: country=${countryFilter}`}{validStage && `: stage=${validStage}`}
+                  </span>
+                )}
+              </span>
+              <span>
+                {visibleCountryRows.length} of {allCountryRows.length} countries
+              </span>
             </div>
           </div>
         </section>
       )}
 
       {/* Leaderboard */}
-      <section className="max-w-7xl mx-auto px-6 pb-10">
+      <section id="leaderboard" className="max-w-7xl mx-auto px-6 pb-10 scroll-mt-20">
         <div className="bg-ink-900 border border-ink-800 rounded-2xl overflow-hidden">
           <header className="px-5 py-3 border-b border-ink-800/60 flex items-baseline justify-between">
             <h2 className="text-sm font-bold text-white">
               {requestedYear ? `${requestedYear} referees` : 'All referees — sorted by matches officiated'}
             </h2>
-            <span className="text-[10px] text-ink-500 font-mono">{visibleRefs.length} referees</span>
+            <span className="text-[10px] text-ink-500 font-mono">
+              {visibleRefs.length} referee{visibleRefs.length === 1 ? '' : 's'}
+              {anyFilterActive && ` of ${allRefs.length}`}
+            </span>
           </header>
+          {/* Filter bar — name + country + stage. Composes with the
+              year selector in the hero. */}
+          <RefereeFilterBar
+            countries={allCountries}
+            activeCountry={countryFilter}
+            activeStage={validStage}
+            activeName={nameFilter}
+            activeYear={requestedYear}
+            showName
+            context="leaderboard"
+          />
           {visibleRefs.length === 0 ? (
             <div className="p-10 text-center text-ink-400">
-              No referee data for {requestedYear}.
+              {anyFilterActive
+                ? 'No referees match the active filters.'
+                : requestedYear
+                  ? `No referee data for ${requestedYear}.`
+                  : 'No referee data.'}
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -384,13 +502,118 @@ export default async function RefereesPage({ searchParams }: PageProps) {
             </div>
           )}
           <div className="px-4 py-2 border-t border-ink-800 text-[10px] font-mono text-ink-500">
-            <span className="text-brand-400">
-              GET /referees?limit=500{requestedYear ? ` · client-side filter: year=${requestedYear}` : ''}
-            </span>
+            <span className="text-brand-400">GET /referees?limit=500</span>
+            {requestedYear && <span> · year={requestedYear}</span>}
+            {nameFilter    && <span> · name~{nameFilter}</span>}
+            {countryFilter && <span> · country={countryFilter}</span>}
+            {validStage    && <span> · stage={validStage}</span>}
           </div>
         </div>
       </section>
     </>
+  );
+}
+
+/**
+ * Filter bar — shared shape across both the country×stage matrix and
+ * the all-referees leaderboard. Form-driven (no JS needed); submits
+ * via GET to update the URL searchParams in place. The "Apply"
+ * button is the only network ping per filter change.
+ *
+ * `context` is a label for the cache-busting key only — both
+ * instances render the same controls; their action target differs
+ * only via the URL params they preserve. `showName` hides the name
+ * input on the country×stage table where it doesn't apply.
+ */
+function RefereeFilterBar({
+  countries, activeCountry, activeStage, activeName, activeYear, showName, context,
+}: {
+  countries:     string[];
+  activeCountry: string;
+  activeStage:   string;
+  activeName:    string;
+  activeYear:    number | null;
+  showName:      boolean;
+  context:       string;
+}) {
+  const anyActive = !!(activeName || activeCountry || activeStage);
+  // The hash anchor lands the reload at the table the user just
+  // touched so the page doesn't scroll back to the top.
+  const anchor = context === 'leaderboard' ? '#leaderboard' : '#country-stage';
+  // Build a "clear filters" URL that keeps the year but drops the
+  // rest. When no year is active, lands back at the bare /referees/.
+  const clearHref = activeYear ? `/referees/?year=${activeYear}${anchor}` : `/referees/${anchor}`;
+  return (
+    <form
+      method="get"
+      action={`/referees/${anchor}`}
+      className="px-5 py-3 border-b border-ink-800/60 bg-ink-900/40 flex flex-wrap items-end gap-3 text-xs"
+    >
+      {/* Preserve year across filter changes */}
+      {activeYear != null && <input type="hidden" name="year" value={activeYear} />}
+
+      {showName && (
+        <label className="flex flex-col gap-1 min-w-[180px]">
+          <span className="text-[9px] uppercase tracking-widest text-ink-400">Name contains</span>
+          <input
+            type="text"
+            name="name"
+            defaultValue={activeName}
+            placeholder="e.g. Irmatov"
+            className="bg-ink-800 border border-ink-700 rounded px-2 py-1 text-ink-100 placeholder:text-ink-600 focus:border-brand-500 outline-none"
+          />
+        </label>
+      )}
+
+      <label className="flex flex-col gap-1 min-w-[160px]">
+        <span className="text-[9px] uppercase tracking-widest text-ink-400">Country</span>
+        <select
+          name="country"
+          defaultValue={activeCountry}
+          className="bg-ink-800 border border-ink-700 rounded px-2 py-1 text-ink-100 focus:border-brand-500 outline-none"
+        >
+          <option value="">All countries</option>
+          {countries.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+      </label>
+
+      <label className="flex flex-col gap-1 min-w-[140px]">
+        <span className="text-[9px] uppercase tracking-widest text-ink-400">Stage</span>
+        <select
+          name="stage"
+          defaultValue={activeStage}
+          className="bg-ink-800 border border-ink-700 rounded px-2 py-1 text-ink-100 focus:border-brand-500 outline-none"
+        >
+          <option value="">All stages</option>
+          <option value="group">Group stage</option>
+          <option value="round_of_32">Round of 32</option>
+          <option value="round_of_16">Round of 16</option>
+          <option value="quarter_final">Quarterfinal</option>
+          <option value="semi_final">Semifinal</option>
+          <option value="third_place">Third-place playoff</option>
+          <option value="final">Final</option>
+        </select>
+      </label>
+
+      <div className="flex items-center gap-2 ml-auto">
+        <button
+          type="submit"
+          className="text-[10px] uppercase tracking-widest font-semibold bg-brand-600 hover:bg-brand-500 text-white rounded px-3 py-1.5 transition-colors"
+        >
+          Apply
+        </button>
+        {anyActive && (
+          <a
+            href={clearHref}
+            className="text-[10px] uppercase tracking-widest font-semibold border border-ink-700 hover:border-ink-500 text-ink-300 hover:text-ink-100 rounded px-3 py-1.5 transition-colors"
+          >
+            Clear
+          </a>
+        )}
+      </div>
+    </form>
   );
 }
 
