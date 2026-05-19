@@ -39,3 +39,7 @@ FIRST_RUN=1 ./deploy/deploy.sh # first-time setup (systemd + nginx hint)
 
 Routes through nginx on the studio VPS — see `deploy/zafronix-wc-explorer.nginx.conf`
 for the location-block snippet to add inside the existing `api.zafronix.com` vhost.
+
+**See [RUNBOOK.md](RUNBOOK.md)** for architecture, topology, secrets,
+deployment, and full bootstrap-from-scratch instructions (e.g.
+rebuilding on a new host).
