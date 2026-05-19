@@ -240,12 +240,33 @@ export async function getTriviaForYear(year: number): Promise<ApiTriviaFact[]> {
   });
 }
 
+/**
+ * Server `/compare` caps at 8 years per request (response-size budget).
+ * Chunk transparently so callers don't have to think about it — and
+ * so a crawler hitting `/wc-explorer/compare/?years=…&…&…` (9+) gets
+ * data back instead of an internal 400.
+ */
+const COMPARE_CHUNK = 8;
+
 export async function compareTournaments(years: number[]): Promise<ApiCompareRow[]> {
   if (years.length === 0) return [];
-  return apiGet<ApiCompareRow[]>(`/compare?years=${years.join(',')}`, {
-    revalidate: REVALIDATE.static,
-    tags: [`wc:compare:${years.join(',')}`],
-  });
+  if (years.length <= COMPARE_CHUNK) {
+    return apiGet<ApiCompareRow[]>(`/compare?years=${years.join(',')}`, {
+      revalidate: REVALIDATE.static,
+      tags: [`wc:compare:${years.join(',')}`],
+    });
+  }
+  const chunks: number[][] = [];
+  for (let i = 0; i < years.length; i += COMPARE_CHUNK) {
+    chunks.push(years.slice(i, i + COMPARE_CHUNK));
+  }
+  const parts = await Promise.all(
+    chunks.map((c) => apiGet<ApiCompareRow[]>(`/compare?years=${c.join(',')}`, {
+      revalidate: REVALIDATE.static,
+      tags: [`wc:compare:${c.join(',')}`],
+    })),
+  );
+  return parts.flat();
 }
 
 export async function getAggregateChampions(): Promise<ApiAggregateChampions> {
