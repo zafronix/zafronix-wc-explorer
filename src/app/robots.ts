@@ -1,23 +1,59 @@
 /**
  * Next.js robots.txt generator.
  *
- * One real-world incident motivated this: GPTBot fired 12,580
- * requests against `/wc-explorer/compare/?years=…` overnight
- * (2026-05-18 → 2026-05-19) by enumerating year combinations.
- * Most of those were 9-year requests that 400'd against the
- * /compare API's 8-year cap — fixed client-side by chunking, but
- * the combinatorial crawl itself is still expensive on every
- * future crawl and adds zero indexing value (one /compare page
- * is enough; bots don't need every combination).
+ * THREE classes of rules:
  *
- * We allow indexing of the canonical pages and disallow the
- * combinatorial trap.
+ *  1. Blocked SEO crawlers — pure resource cost, no value to us.
+ *     Semrush, MJ12, DotBot, etc. They generally honor robots.txt.
+ *
+ *  2. Blocked AI training crawlers — opt out of LLM training data.
+ *     GPTBot, MetaAgent, CohereBot, DeepSeekBot, MistralBot.
+ *     These are SEPARATE from agentic / search bots (ChatGPT-User,
+ *     OAI-SearchBot, facebookexternalhit, Applebot) that DO drive
+ *     real product traffic — those stay allowed.
+ *
+ *  3. Default rule — allow indexing of canonical pages, disallow
+ *     the /compare?years= combinatorial trap that one GPTBot run
+ *     hammered with 12,580 requests on 2026-05-18.
+ *
+ * Non-compliant bots get a hard nginx-level 403 (see deploy/
+ * blocked-bots.nginx.conf).
  */
 import type { MetadataRoute } from 'next';
+
+const BLOCKED_BOTS = [
+  // SEO / backlink crawlers (no value, pure resource consumption)
+  'SemrushBot',
+  'DotBot',
+  'MJ12bot',
+  'AwarioBot',
+  'SERankingBacklinksBot',
+  'ReadBot',
+  'wpbot',
+  'RecordedFuture',
+
+  // Aggressive crawlers with little benefit
+  'Bytespider',
+  'Amazonbot',
+
+  // AI training crawlers (separate from agentic / live-search bots
+  // which still drive real product traffic — those stay allowed)
+  'GPTBot',
+  'Meta-ExternalAgent',
+  'meta-externalagent',
+  'meta-externalads',
+  'CohereBot',
+  'DeepSeekBot',
+  'MistralBot',
+];
 
 export default function robots(): MetadataRoute.Robots {
   return {
     rules: [
+      ...BLOCKED_BOTS.map((userAgent) => ({
+        userAgent,
+        disallow: '/',
+      })),
       {
         userAgent: '*',
         allow: '/',
@@ -25,7 +61,7 @@ export default function robots(): MetadataRoute.Robots {
         // fully standardized but * is widely supported by major bots
         // (GoogleBot, GPTBot, Bingbot, CCBot).
         disallow: [
-          '/compare/*years=*', // combinatorial year-set URLs
+          '/compare/*years=*',
         ],
       },
     ],
